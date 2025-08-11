@@ -16,12 +16,13 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
   final _formKey = GlobalKey<FormState>();
   final _pageController = PageController();
   int _currentPage = 0;
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   // Controllers
   final TextEditingController _clientNameController = TextEditingController();
   final TextEditingController _clientPhone1Controller = TextEditingController();
   final TextEditingController _clientPhone2Controller = TextEditingController();
+  final TextEditingController _serialNumberController = TextEditingController();
   final TextEditingController _brandSearchController = TextEditingController();
   final TextEditingController _problemController = TextEditingController();
   final TextEditingController _costController = TextEditingController();
@@ -536,6 +537,7 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
     'هاردوير',
     'شاشة',
     'بطارية',
+    'شحن',
     'مياه',
     'شبكة',
     'صوت',
@@ -710,6 +712,7 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
       _clientNameController.text = widget.prefilledDevice!.clientName;
       _clientPhone1Controller.text = widget.prefilledDevice!.clientPhone1;
       _clientPhone2Controller.text = widget.prefilledDevice!.clientPhone2;
+      _serialNumberController.text = widget.prefilledDevice!.serialNumber;
       _selectedGender = widget.prefilledDevice!.gender;
       _selectedDeviceCategory = widget.prefilledDevice!.deviceCategory;
       _selectedBrand = widget.prefilledDevice!.brand;
@@ -894,6 +897,7 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
               double.tryParse(_remainingAmountController.text) ?? 0.0,
           spareParts: _materialsController.text.trim(),
           createdAt: DateTime.now(),
+          serialNumber: _serialNumberController.text.trim(),
         );
 
         // حفظ الجهاز في قاعدة البيانات
@@ -1389,6 +1393,21 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'يرجى اختيار نوع الجهاز';
+              }
+              return null;
+            },
+          ),
+
+          const SizedBox(height: 16),
+
+          // حقل Serial Number
+          _buildCustomTextField(
+            controller: _serialNumberController,
+            label: 'الرقم التسلسلي (Serial Number)',
+            icon: Icons.qr_code,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'يرجى إدخال الرقم التسلسلي للجهاز';
               }
               return null;
             },

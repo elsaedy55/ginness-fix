@@ -1,6 +1,7 @@
 class Device {
   final int? id;
   final String deviceId;
+  final String serialNumber;
   final String clientName;
   final String clientPhone1;
   final String clientPhone2;
@@ -22,6 +23,7 @@ class Device {
   Device({
     this.id,
     required this.deviceId,
+    required this.serialNumber,
     required this.clientName,
     required this.clientPhone1,
     this.clientPhone2 = '',
@@ -46,6 +48,7 @@ class Device {
     return {
       'id': id,
       'device_id': deviceId,
+      'serial_number': serialNumber,
       'client_name': clientName,
       'client_phone1': clientPhone1,
       'client_phone2': clientPhone2,
@@ -71,6 +74,7 @@ class Device {
     return Device(
       id: map['id'] as int?,
       deviceId: map['device_id'] ?? '',
+      serialNumber: map['serial_number'] ?? '',
       clientName: map['client_name'] ?? '',
       clientPhone1: map['client_phone1'] ?? '',
       clientPhone2: map['client_phone2'] ?? '',
@@ -112,6 +116,7 @@ class Device {
   Device copyWith({
     int? id,
     String? deviceId,
+    String? serialNumber,
     String? clientName,
     String? clientPhone1,
     String? clientPhone2,
@@ -133,6 +138,7 @@ class Device {
     return Device(
       id: id ?? this.id,
       deviceId: deviceId ?? this.deviceId,
+      serialNumber: serialNumber ?? this.serialNumber,
       clientName: clientName ?? this.clientName,
       clientPhone1: clientPhone1 ?? this.clientPhone1,
       clientPhone2: clientPhone2 ?? this.clientPhone2,

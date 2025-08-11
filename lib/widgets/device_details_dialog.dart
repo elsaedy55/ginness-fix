@@ -172,6 +172,10 @@ class _DeviceDetailsDialogState extends State<DeviceDetailsDialog> {
                                 widget.device.deviceId,
                               ),
                               _buildInfoRow(
+                                'الرقم التسلسلي:',
+                                widget.device.serialNumber,
+                              ),
+                              _buildInfoRow(
                                 'نوع الجهاز:',
                                 widget.device.deviceCategory,
                               ),

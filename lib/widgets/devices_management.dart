@@ -66,6 +66,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
           final searchTerm = _searchController.text.toLowerCase();
           if (searchTerm.isNotEmpty) {
             if (!device.deviceId.toLowerCase().contains(searchTerm) &&
+                !device.serialNumber.toLowerCase().contains(searchTerm) &&
                 !device.clientName.toLowerCase().contains(searchTerm) &&
                 !device.faultDescription.toLowerCase().contains(searchTerm) &&
                 !device.faultType.toLowerCase().contains(searchTerm)) {
@@ -979,373 +980,637 @@ class _DevicesManagementState extends State<DevicesManagement> {
 
           const SizedBox(height: 16),
 
-          // معلومات النتائج مع زر التحديث
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.blue[50],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, size: 16, color: Colors.blue[700]),
-                const SizedBox(width: 8),
-                Text(
-                  'عرض ${_filteredDevices.length} من أصل ${_devices.length} جهاز',
-                  style: TextStyle(
-                    color: Colors.blue[700],
-                    fontWeight: FontWeight.w500,
+          // جدول الأجهزة
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    spreadRadius: 2,
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                ),
-                const Spacer(),
-                // زر التحديث
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: _isLoading ? null : _loadDevices,
-                    child: Container(
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Column(
+                  children: [
+                    // رأس الجدول المحسن
+                    Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+                        horizontal: 20,
+                        vertical: 16,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.blue[100],
-                        borderRadius: BorderRadius.circular(20),
+                        gradient: LinearGradient(
+                          colors: [Colors.blue[600]!, Colors.blue[700]!],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
                       ),
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          _isLoading
-                              ? SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.blue[700]!,
-                                  ),
-                                ),
-                              )
-                              : Icon(
-                                Icons.refresh,
-                                size: 14,
-                                color: Colors.blue[700],
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              'رقم الجهاز',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
                               ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _isLoading ? 'جاري التحميل...' : 'تحديث',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue[700],
-                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 20,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              'العميل',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 20,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              'نوع العطل',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 20,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              'الحالة',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 20,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              'حالة السداد',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 20,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'التكلفة',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 20,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'الإجراءات',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
 
-          const SizedBox(height: 16),
+                    // محتوى الجدول مع مؤشر التحميل
+                    Expanded(
+                      child:
+                          _isLoading
+                              ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    CircularProgressIndicator(
+                                      strokeWidth: 3,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.blue[600]!,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'جاري تحميل الأجهزة...',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.grey[600],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                              : _errorMessage.isNotEmpty
+                              ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      size: 48,
+                                      color: Colors.red[400],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      _errorMessage,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.red[600],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      onPressed: _loadDevices,
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('إعادة المحاولة'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue[600],
+                                        foregroundColor: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                              : _filteredDevices.isEmpty
+                              ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.devices_other,
+                                      size: 48,
+                                      color: Colors.grey[400],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'لا توجد أجهزة',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        color: Colors.grey[600],
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'قم بإضافة أول جهاز للبدء',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                              : ListView.builder(
+                                padding: EdgeInsets.zero,
+                                itemCount: _filteredDevices.length,
+                                itemBuilder: (context, index) {
+                                  final device = _filteredDevices[index];
 
-          // جدول الأجهزة
-          Expanded(
-            child: Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  // رأس الجدول
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(12),
-                        topRight: Radius.circular(12),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'رقم الجهاز',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            'العميل',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'نوع العطل',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'الحالة',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 1,
-                          child: Text(
-                            'التكلفة',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 1,
-                          child: Text(
-                            '',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // محتوى الجدول مع مؤشر التحميل
-                  Expanded(
-                    child:
-                        _isLoading
-                            ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  CircularProgressIndicator(
-                                    strokeWidth: 3,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.blue[600]!,
+                                  return Container(
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 4,
                                     ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'جاري تحميل الأجهزة...',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey[600],
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                            : _errorMessage.isNotEmpty
-                            ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.error_outline,
-                                    size: 48,
-                                    color: Colors.red[400],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _errorMessage,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.red[600],
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  ElevatedButton.icon(
-                                    onPressed: _loadDevices,
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text('إعادة المحاولة'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.blue[600],
-                                      foregroundColor: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                            : _filteredDevices.isEmpty
-                            ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.devices_other,
-                                    size: 48,
-                                    color: Colors.grey[400],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'لا توجد أجهزة',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      color: Colors.grey[600],
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'قم بإضافة أول جهاز للبدء',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[500],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                            : ListView.builder(
-                              itemCount: _filteredDevices.length,
-                              itemBuilder: (context, index) {
-                                final device = _filteredDevices[index];
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
                                         color: Colors.grey[200]!,
+                                        width: 1,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.grey[100]!,
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Row(
+                                        children: [
+                                          // رقم الجهاز
+                                          Expanded(
+                                            flex: 2,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue[50],
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                border: Border.all(
+                                                  color: Colors.blue[200]!,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                device.deviceId,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.blue[800],
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+
+                                          const SizedBox(width: 12),
+
+                                          // معلومات العميل
+                                          Expanded(
+                                            flex: 3,
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  device.clientName,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Row(
+                                                  children: [
+                                                    Icon(
+                                                      Icons.phone,
+                                                      size: 12,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      device.clientPhone1,
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.grey[600],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+
+                                          const SizedBox(width: 12),
+
+                                          // نوع العطل
+                                          Expanded(
+                                            flex: 2,
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.orange[100],
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          6,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    device.faultType,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Colors.orange[800],
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  device
+                                                              .faultDescription
+                                                              .length >
+                                                          30
+                                                      ? '${device.faultDescription.substring(0, 30)}...'
+                                                      : device.faultDescription,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey[600],
+                                                  ),
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+
+                                          const SizedBox(width: 12),
+
+                                          // حالة الجهاز
+                                          Expanded(
+                                            flex: 2,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    device.status == 'مكتمل'
+                                                        ? Colors.green[100]
+                                                        : device.status ==
+                                                            'قيد الإصلاح'
+                                                        ? Colors.orange[100]
+                                                        : device.status ==
+                                                            'في الانتظار'
+                                                        ? Colors.blue[100]
+                                                        : Colors.red[100],
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                                border: Border.all(
+                                                  color:
+                                                      device.status == 'مكتمل'
+                                                          ? Colors.green[300]!
+                                                          : device.status ==
+                                                              'قيد الإصلاح'
+                                                          ? Colors.orange[300]!
+                                                          : device.status ==
+                                                              'في الانتظار'
+                                                          ? Colors.blue[300]!
+                                                          : Colors.red[300]!,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    device.status == 'مكتمل'
+                                                        ? Icons.check_circle
+                                                        : device.status ==
+                                                            'قيد الإصلاح'
+                                                        ? Icons.build_circle
+                                                        : device.status ==
+                                                            'في الانتظار'
+                                                        ? Icons.hourglass_empty
+                                                        : Icons.cancel,
+                                                    size: 14,
+                                                    color:
+                                                        device.status == 'مكتمل'
+                                                            ? Colors.green[700]
+                                                            : device.status ==
+                                                                'قيد الإصلاح'
+                                                            ? Colors.orange[700]
+                                                            : device.status ==
+                                                                'في الانتظار'
+                                                            ? Colors.blue[700]
+                                                            : Colors.red[700],
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Flexible(
+                                                    child: Text(
+                                                      device.status,
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color:
+                                                            device.status ==
+                                                                    'مكتمل'
+                                                                ? Colors
+                                                                    .green[700]
+                                                                : device.status ==
+                                                                    'قيد الإصلاح'
+                                                                ? Colors
+                                                                    .orange[700]
+                                                                : device.status ==
+                                                                    'في الانتظار'
+                                                                ? Colors
+                                                                    .blue[700]
+                                                                : Colors
+                                                                    .red[700],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+
+                                          // حالة الدفع
+                                          Expanded(
+                                            flex: 2,
+                                            child: FutureBuilder<double>(
+                                              future:
+                                                  device.id != null
+                                                      ? DatabaseService.getDeviceTotalPaid(
+                                                        device.id!,
+                                                      )
+                                                      : Future.value(0.0),
+                                              builder: (context, snapshot) {
+                                                final totalPaid =
+                                                    snapshot.data ?? 0.0;
+                                                final remaining =
+                                                    device.totalAmount -
+                                                    totalPaid;
+                                                final isFullyPaid =
+                                                    remaining <= 0;
+
+                                                return Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 8,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color:
+                                                        isFullyPaid
+                                                            ? Colors.green[50]
+                                                            : Colors.red[50],
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                    border: Border.all(
+                                                      color:
+                                                          isFullyPaid
+                                                              ? Colors
+                                                                  .green[200]!
+                                                              : Colors
+                                                                  .red[200]!,
+                                                    ),
+                                                  ),
+                                                  child: Column(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      Icon(
+                                                        isFullyPaid
+                                                            ? Icons
+                                                                .check_circle_outline
+                                                            : Icons
+                                                                .warning_amber_rounded,
+                                                        size: 16,
+                                                        color:
+                                                            isFullyPaid
+                                                                ? Colors
+                                                                    .green[700]
+                                                                : Colors
+                                                                    .red[700],
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        isFullyPaid
+                                                            ? 'مسدد بالكامل'
+                                                            : 'متبقي دفع',
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color:
+                                                              isFullyPaid
+                                                                  ? Colors
+                                                                      .green[700]
+                                                                  : Colors
+                                                                      .red[700],
+                                                        ),
+                                                      ),
+                                                      if (!isFullyPaid)
+                                                        Text(
+                                                          '${remaining.toStringAsFixed(2)} ₪',
+                                                          style: TextStyle(
+                                                            fontSize: 10,
+                                                            color:
+                                                                Colors.red[600],
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+
+                                          const SizedBox(width: 12),
+
+                                          // المبلغ الكلي
+                                          Expanded(
+                                            flex: 1,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 8,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey[100],
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                '${device.totalAmount} ₪',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                            ),
+                                          ),
+
+                                          const SizedBox(width: 12),
+
+                                          // أزرار الأفعال
+                                          Expanded(
+                                            flex: 1,
+                                            child: SingleChildScrollView(
+                                              scrollDirection: Axis.horizontal,
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: _buildActionButtons(
+                                                  device,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          device.deviceId,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 3,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              device.clientName,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                            Text(
-                                              device.clientPhone1,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey[600],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(device.faultType),
-                                            Text(
-                                              device.faultDescription,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey[600],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                device.status == 'مكتمل'
-                                                    ? Colors.green[100]
-                                                    : device.status ==
-                                                        'قيد الإصلاح'
-                                                    ? Colors.orange[100]
-                                                    : device.status ==
-                                                        'في الانتظار'
-                                                    ? Colors.blue[100]
-                                                    : Colors.red[100],
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            device.status,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              color:
-                                                  device.status == 'مكتمل'
-                                                      ? Colors.green[700]
-                                                      : device.status ==
-                                                          'قيد الإصلاح'
-                                                      ? Colors.orange[700]
-                                                      : device.status ==
-                                                          'في الانتظار'
-                                                      ? Colors.blue[700]
-                                                      : Colors.red[700],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 1,
-                                        child: Text(
-                                          '${device.totalAmount} ₪',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 1,
-                                        child: SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: _buildActionButtons(
-                                              device,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                  ),
-                ],
+                                  );
+                                },
+                              ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

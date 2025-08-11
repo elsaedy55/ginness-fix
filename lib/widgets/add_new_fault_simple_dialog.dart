@@ -55,9 +55,16 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
   }
 
   double get _calculatedRemaining {
-    final total = double.tryParse(_totalAmountController.text) ?? 0;
-    final advance = double.tryParse(_advanceAmountController.text) ?? 0;
-    return (total - advance).clamp(0.0, double.infinity);
+    final newFaultCost = double.tryParse(_totalAmountController.text) ?? 0;
+    final newAdvance = double.tryParse(_advanceAmountController.text) ?? 0;
+
+    // التكلفة الإجمالية الجديدة = التكلفة السابقة + تكلفة العطل الجديد
+    final totalNewAmount = widget.existingDevice.totalAmount + newFaultCost;
+
+    // المتبقي = التكلفة الإجمالية الجديدة - (المدفوع سابقاً من existingDevice.advanceAmount) - المقدم الجديد
+    final remaining =
+        totalNewAmount - widget.existingDevice.advanceAmount - newAdvance;
+    return remaining.clamp(0.0, double.infinity);
   }
 
   void _saveFault() async {
@@ -74,18 +81,33 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
               'تم أرشفة العطل السابق قبل إضافة عطل جديد - ${DateTime.now().toString().substring(0, 19)}',
         );
 
-        // إنشاء العطل الجديد كتحديث للجهاز الموجود
-        final totalAmount = double.tryParse(_totalAmountController.text) ?? 0.0;
-        final advanceAmount =
+        // حساب التكاليف الجديدة (إضافة للتكلفة الإجمالية الحالية)
+        final newFaultAmount =
+            double.tryParse(_totalAmountController.text) ?? 0.0;
+        final newAdvanceAmount =
             double.tryParse(_advanceAmountController.text) ?? 0.0;
+
+        // جلب إجمالي المدفوع حتى الآن من جميع الدفعات السابقة
+        final currentTotalPaid = await DatabaseService.getDeviceTotalPaid(
+          widget.existingDevice.id!,
+        );
+
+        // حساب التكلفة الإجمالية الجديدة (التكلفة السابقة + التكلفة الجديدة)
+        final totalAmountNew =
+            widget.existingDevice.totalAmount + newFaultAmount;
+
+        // حساب المبلغ المتبقي الجديد (التكلفة الإجمالية الجديدة - إجمالي المدفوع - المقدم الجديد)
+        final remainingAmountNew = (totalAmountNew -
+                currentTotalPaid -
+                newAdvanceAmount)
+            .clamp(0.0, double.infinity);
 
         final updatedDevice = widget.existingDevice.copyWith(
           faultType: _selectedFaultType,
           faultDescription: _problemController.text.trim(),
           status: 'في الانتظار',
-          totalAmount: totalAmount,
-          advanceAmount: advanceAmount,
-          remainingAmount: _calculatedRemaining,
+          totalAmount: totalAmountNew, // التكلفة التراكمية
+          remainingAmount: remainingAmountNew, // المتبقي الجديد
           spareParts: _sparePartsController.text.trim(),
           updatedAt: DateTime.now(),
         );
@@ -93,11 +115,11 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
         // تحديث الجهاز في قاعدة البيانات
         await DatabaseService.updateDevice(updatedDevice);
 
-        // إضافة دفعة المقدم إذا كان أكبر من 0
-        if (advanceAmount > 0) {
+        // إضافة دفعة المقدم للعطل الجديد إذا كان أكبر من 0
+        if (newAdvanceAmount > 0) {
           final advancePayment = Payment(
             deviceId: widget.existingDevice.id!,
-            amount: advanceAmount,
+            amount: newAdvanceAmount,
             type: 'مقدم',
             notes: 'دفعة المقدم للعطل الجديد - $_selectedFaultType',
             createdAt: DateTime.now(),
@@ -111,10 +133,10 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'تم إضافة العطل الجديد بنجاح!\nالجهاز: ${widget.existingDevice.deviceId}',
+                'تم إضافة العطل الجديد بنجاح!\nالجهاز: ${widget.existingDevice.deviceId}\nالتكلفة الإجمالية الجديدة: ${totalAmountNew.toStringAsFixed(2)} جنيه\nالمتبقي: ${remainingAmountNew.toStringAsFixed(2)} جنيه',
               ),
               backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
+              duration: const Duration(seconds: 5),
             ),
           );
 
@@ -260,6 +282,57 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
                   Text(
                     'العطل السابق: ${widget.existingDevice.faultType} - ${widget.existingDevice.faultDescription}',
                   ),
+                  const SizedBox(height: 8),
+                  // المعلومات المالية الحالية
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber[200]!),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('تكلفة الأعطال السابقة:'),
+                            Text(
+                              '${widget.existingDevice.totalAmount.toStringAsFixed(2)} جنيه',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('إجمالي المدفوع سابقاً:'),
+                            Text(
+                              '${widget.existingDevice.advanceAmount.toStringAsFixed(2)} جنيه',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('المتبقي قبل العطل الجديد:'),
+                            Text(
+                              '${widget.existingDevice.remainingAmount.toStringAsFixed(2)} جنيه',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -380,8 +453,9 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
                                       () {},
                                     ), // لتحديث المبلغ المتبقي
                                 validator: (value) {
-                                  if (value == null || value.isEmpty)
+                                  if (value == null || value.isEmpty) {
                                     return null;
+                                  }
                                   final amount = double.tryParse(value);
                                   if (amount == null || amount < 0) {
                                     return 'يرجى إدخال مبلغ صحيح';
@@ -420,18 +494,21 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
                                       () {},
                                     ), // لتحديث المبلغ المتبقي
                                 validator: (value) {
-                                  if (value == null || value.isEmpty)
+                                  if (value == null || value.isEmpty) {
                                     return null;
+                                  }
                                   final advance = double.tryParse(value) ?? 0;
                                   final total =
                                       double.tryParse(
                                         _totalAmountController.text,
                                       ) ??
                                       0;
-                                  if (advance < 0)
+                                  if (advance < 0) {
                                     return 'يرجى إدخال مبلغ صحيح';
-                                  if (total > 0 && advance > total)
+                                  }
+                                  if (total > 0 && advance > total) {
                                     return 'المقدم أكبر من التكلفة الإجمالية';
+                                  }
                                   return null;
                                 },
                               ),
@@ -453,17 +530,42 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.grey[300]!),
                             ),
-                            child: Row(
+                            child: Column(
                               children: [
-                                const Icon(Icons.calculate, color: Colors.grey),
-                                const SizedBox(width: 8),
-                                const Text('المبلغ المتبقي: '),
-                                Text(
-                                  '${_calculatedRemaining.toStringAsFixed(2)} ₪',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepOrange,
-                                  ),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.calculate,
+                                      color: Colors.grey,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text('التكلفة الإجمالية الجديدة: '),
+                                    Text(
+                                      '${(widget.existingDevice.totalAmount + (double.tryParse(_totalAmountController.text) ?? 0)).toStringAsFixed(2)} ₪',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.money_off,
+                                      color: Colors.grey,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text('المبلغ المتبقي الجديد: '),
+                                    Text(
+                                      '${_calculatedRemaining.toStringAsFixed(2)} ₪',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.deepOrange,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),

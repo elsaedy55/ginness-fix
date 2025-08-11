@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/device.dart';
+import '../models/device_history.dart';
 import '../services/database_service.dart';
 
 class EditDeviceDialog extends StatefulWidget {
@@ -21,10 +22,8 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
   late final TextEditingController _clientNameController;
   late final TextEditingController _clientPhone1Controller;
   late final TextEditingController _clientPhone2Controller;
+  late final TextEditingController _serialNumberController;
   late final TextEditingController _faultDescriptionController;
-  late final TextEditingController _totalAmountController;
-  late final TextEditingController _advanceAmountController;
-  late final TextEditingController _remainingAmountController;
   late final TextEditingController _sparePartsController;
 
   late String _selectedGender;
@@ -36,6 +35,8 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
   late String _selectedStatus;
 
   bool _isLoading = false;
+  List<DeviceHistory> _deviceHistory = [];
+  bool _showFaultHistory = false;
 
   // قوائم البيانات
   final List<String> _genderOptions = ['ذكر', 'أنثى'];
@@ -55,6 +56,7 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
   final List<String> _faultTypes = [
     'شاشة',
     'بطارية',
+    'شحن',
     'هاردوير',
     'سوفت وير',
     'مياه',
@@ -98,17 +100,11 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
     _clientPhone2Controller = TextEditingController(
       text: widget.device.clientPhone2,
     );
+    _serialNumberController = TextEditingController(
+      text: widget.device.serialNumber,
+    );
     _faultDescriptionController = TextEditingController(
       text: widget.device.faultDescription,
-    );
-    _totalAmountController = TextEditingController(
-      text: widget.device.totalAmount.toString(),
-    );
-    _advanceAmountController = TextEditingController(
-      text: widget.device.advanceAmount.toString(),
-    );
-    _remainingAmountController = TextEditingController(
-      text: widget.device.remainingAmount.toString(),
     );
     _sparePartsController = TextEditingController(
       text: widget.device.spareParts,
@@ -121,6 +117,102 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
     _selectedOS = widget.device.operatingSystem;
     _selectedFaultType = widget.device.faultType;
     _selectedStatus = widget.device.status;
+
+    _loadDeviceHistory();
+  }
+
+  Future<void> _loadDeviceHistory() async {
+    try {
+      // جلب سجل الأعطال المؤرشفة
+      final history = await DatabaseService.getDeviceHistory(
+        widget.device.deviceId,
+      );
+
+      setState(() {
+        _deviceHistory = history;
+      });
+    } catch (e) {
+      debugPrint('خطأ في جلب سجل الأعطال: $e');
+    }
+  }
+
+  Future<void> _updateDeviceStatus(String newStatus) async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      // تحديث حالة الجهاز الحالي
+      final updatedDevice = widget.device.copyWith(
+        status: newStatus,
+        updatedAt: DateTime.now(),
+      );
+
+      await DatabaseService.updateDevice(updatedDevice);
+
+      setState(() {
+        _selectedStatus = newStatus;
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم تحديث حالة العطل إلى: $newStatus'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      widget.onDeviceUpdated();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('فشل في تحديث حالة العطل: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _updateHistoryStatus(
+    DeviceHistory history,
+    String newStatus,
+  ) async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      await DatabaseService.updateDeviceHistoryStatus(history.id!, newStatus);
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم تحديث حالة العطل إلى: $newStatus'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // إعادة تحميل السجل
+      _loadDeviceHistory();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('فشل في تحديث حالة العطل: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -128,19 +220,10 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
     _clientNameController.dispose();
     _clientPhone1Controller.dispose();
     _clientPhone2Controller.dispose();
+    _serialNumberController.dispose();
     _faultDescriptionController.dispose();
-    _totalAmountController.dispose();
-    _advanceAmountController.dispose();
-    _remainingAmountController.dispose();
     _sparePartsController.dispose();
     super.dispose();
-  }
-
-  void _calculateRemainingAmount() {
-    final total = double.tryParse(_totalAmountController.text) ?? 0.0;
-    final advance = double.tryParse(_advanceAmountController.text) ?? 0.0;
-    final remaining = total - advance;
-    _remainingAmountController.text = remaining.toStringAsFixed(2);
   }
 
   Future<void> _saveChanges() async {
@@ -155,6 +238,7 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
         clientName: _clientNameController.text,
         clientPhone1: _clientPhone1Controller.text,
         clientPhone2: _clientPhone2Controller.text,
+        serialNumber: _serialNumberController.text,
         gender: _selectedGender,
         deviceCategory: _selectedDeviceCategory,
         brand: _selectedBrand,
@@ -163,10 +247,6 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
         faultType: _selectedFaultType,
         faultDescription: _faultDescriptionController.text,
         status: _selectedStatus,
-        totalAmount: double.tryParse(_totalAmountController.text) ?? 0.0,
-        advanceAmount: double.tryParse(_advanceAmountController.text) ?? 0.0,
-        remainingAmount:
-            double.tryParse(_remainingAmountController.text) ?? 0.0,
         spareParts: _sparePartsController.text,
         updatedAt: DateTime.now(),
       );
@@ -272,7 +352,10 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
                           const SizedBox(width: 16),
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: _selectedGender,
+                              value:
+                                  _genderOptions.contains(_selectedGender)
+                                      ? _selectedGender
+                                      : null,
                               decoration: const InputDecoration(
                                 labelText: 'الجنس',
                                 border: OutlineInputBorder(),
@@ -328,6 +411,24 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
 
                       const SizedBox(height: 24),
 
+                      // الرقم التسلسلي
+                      TextFormField(
+                        controller: _serialNumberController,
+                        decoration: const InputDecoration(
+                          labelText: 'الرقم التسلسلي (Serial Number)',
+                          prefixIcon: Icon(Icons.qr_code),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'يرجى إدخال الرقم التسلسلي للجهاز';
+                          }
+                          return null;
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
                       // معلومات الجهاز
                       const Text(
                         'معلومات الجهاز',
@@ -342,7 +443,12 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
                         children: [
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: _selectedDeviceCategory,
+                              value:
+                                  _deviceCategories.contains(
+                                        _selectedDeviceCategory,
+                                      )
+                                      ? _selectedDeviceCategory
+                                      : null,
                               decoration: const InputDecoration(
                                 labelText: 'نوع الجهاز',
                                 border: OutlineInputBorder(),
@@ -364,7 +470,10 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
                           const SizedBox(width: 16),
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: _selectedBrand,
+                              value:
+                                  _brands.contains(_selectedBrand)
+                                      ? _selectedBrand
+                                      : null,
                               decoration: const InputDecoration(
                                 labelText: 'الماركة',
                                 border: OutlineInputBorder(),
@@ -434,7 +543,10 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
                         children: [
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: _selectedFaultType,
+                              value:
+                                  _faultTypes.contains(_selectedFaultType)
+                                      ? _selectedFaultType
+                                      : null,
                               decoration: const InputDecoration(
                                 labelText: 'نوع العطل',
                                 border: OutlineInputBorder(),
@@ -456,7 +568,10 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
                           const SizedBox(width: 16),
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: _selectedStatus,
+                              value:
+                                  _statusOptions.contains(_selectedStatus)
+                                      ? _selectedStatus
+                                      : null,
                               decoration: const InputDecoration(
                                 labelText: 'حالة الجهاز',
                                 border: OutlineInputBorder(),
@@ -497,58 +612,12 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
 
                       const SizedBox(height: 24),
 
+                      // قسم إدارة الأعطال
+                      _buildFaultManagementSection(),
+
+                      const SizedBox(height: 24),
+
                       // المعلومات المالية
-                      const Text(
-                        'المعلومات المالية',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _totalAmountController,
-                              decoration: const InputDecoration(
-                                labelText: 'إجمالي التكلفة',
-                                border: OutlineInputBorder(),
-                                suffixText: 'جنيه',
-                              ),
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => _calculateRemainingAmount(),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _advanceAmountController,
-                              decoration: const InputDecoration(
-                                labelText: 'المبلغ المُقدم',
-                                border: OutlineInputBorder(),
-                                suffixText: 'جنيه',
-                              ),
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => _calculateRemainingAmount(),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _remainingAmountController,
-                              decoration: const InputDecoration(
-                                labelText: 'المبلغ المتبقي',
-                                border: OutlineInputBorder(),
-                                suffixText: 'جنيه',
-                              ),
-                              readOnly: true,
-                            ),
-                          ),
-                        ],
-                      ),
-
                       const SizedBox(height: 16),
 
                       TextFormField(
@@ -594,5 +663,286 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
         ),
       ),
     );
+  }
+
+  Widget _buildFaultManagementSection() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.build, color: Colors.blue),
+                const SizedBox(width: 8),
+                const Text(
+                  'إدارة الأعطال',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _showFaultHistory = !_showFaultHistory;
+                    });
+                  },
+                  child: Text(_showFaultHistory ? 'إخفاء' : 'عرض الكل'),
+                ),
+              ],
+            ),
+          ),
+
+          // Current Fault
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: _buildCurrentFaultCard(),
+          ),
+
+          // Fault History (if visible)
+          if (_showFaultHistory) ...[
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'الأعطال السابقة:',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_deviceHistory.isEmpty)
+                    const Text(
+                      'لا توجد أعطال سابقة',
+                      style: TextStyle(color: Colors.grey),
+                    )
+                  else
+                    Column(
+                      children:
+                          _deviceHistory
+                              .map((history) => _buildHistoryFaultCard(history))
+                              .toList(),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurrentFaultCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _getStatusColor(widget.device.status).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _getStatusColor(widget.device.status)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.build_circle,
+                color: _getStatusColor(widget.device.status),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'العطل الحالي',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const Spacer(),
+              _buildStatusChip(widget.device.status),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'نوع العطل: ${widget.device.faultType}',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'الوصف: ${widget.device.faultDescription}',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+
+          // Status Update Buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'تحديث الحالة:',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              Wrap(
+                spacing: 4,
+                children:
+                    ['في الانتظار', 'قيد الإصلاح', 'مكتمل', 'تم التسليم']
+                        .where((status) => status != widget.device.status)
+                        .map(
+                          (status) => _buildStatusUpdateButton(
+                            status,
+                            () => _updateDeviceStatus(status),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryFaultCard(DeviceHistory history) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _getStatusColor(history.status).withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.history,
+                color: _getStatusColor(history.status),
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'عطل سابق',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const Spacer(),
+              _buildStatusChip(history.status),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'نوع العطل: ${history.faultType}',
+            style: const TextStyle(fontSize: 11),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'الوصف: ${history.faultDescription}',
+            style: const TextStyle(fontSize: 11),
+          ),
+          const SizedBox(height: 8),
+
+          // Status Update Buttons for History
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'تاريخ الإنشاء: ${_formatDate(history.createdAt)}',
+                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+              ),
+              if (history.status != 'تم التسليم')
+                Wrap(
+                  spacing: 4,
+                  children:
+                      ['في الانتظار', 'قيد الإصلاح', 'مكتمل', 'تم التسليم']
+                          .where((status) => status != history.status)
+                          .map(
+                            (status) => _buildStatusUpdateButton(
+                              status,
+                              () => _updateHistoryStatus(history, status),
+                              isSmall: true,
+                            ),
+                          )
+                          .toList(),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(String status) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _getStatusColor(status),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        status,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusUpdateButton(
+    String status,
+    VoidCallback onPressed, {
+    bool isSmall = false,
+  }) {
+    return ElevatedButton(
+      onPressed: _isLoading ? null : onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _getStatusColor(status),
+        padding: EdgeInsets.symmetric(
+          horizontal: isSmall ? 6 : 8,
+          vertical: isSmall ? 2 : 4,
+        ),
+        minimumSize: const Size(0, 0),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(fontSize: isSmall ? 8 : 10, color: Colors.white),
+      ),
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'في الانتظار':
+        return Colors.orange;
+      case 'قيد الإصلاح':
+        return Colors.blue;
+      case 'مكتمل':
+        return Colors.green;
+      case 'تم التسليم':
+        return Colors.purple;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 }

@@ -44,6 +44,7 @@ class DatabaseService {
         CREATE TABLE IF NOT EXISTS devices (
           id SERIAL PRIMARY KEY,
           device_id VARCHAR(50) UNIQUE NOT NULL,
+          serial_number VARCHAR(100) UNIQUE NOT NULL,
           client_name VARCHAR(255) NOT NULL,
           client_phone1 VARCHAR(20) NOT NULL,
           client_phone2 VARCHAR(20),
@@ -64,9 +65,22 @@ class DatabaseService {
         );
       ''');
 
-      // إنشاء فهرس للبحث السريع
+      // إضافة عمود serial_number للجداول الموجودة إذا لم يكن موجود
+      try {
+        await _connection!.execute('''
+          ALTER TABLE devices ADD COLUMN serial_number VARCHAR(100) UNIQUE;
+        ''');
+      } catch (e) {
+        // العمود موجود بالفعل أو خطأ آخر
+        if (kDebugMode) print('Serial number column may already exist: $e');
+      }
+
+      // إنشاء فهارس للبحث السريع
       await _connection!.execute(
         'CREATE INDEX IF NOT EXISTS idx_device_id ON devices(device_id);',
+      );
+      await _connection!.execute(
+        'CREATE INDEX IF NOT EXISTS idx_serial_number ON devices(serial_number);',
       );
       await _connection!.execute(
         'CREATE INDEX IF NOT EXISTS idx_status ON devices(status);',
@@ -141,20 +155,89 @@ class DatabaseService {
     }
   }
 
+  // التحقق من وجود Serial Number
+  static Future<bool> isSerialNumberExists(String serialNumber) async {
+    try {
+      final connection = await _getConnection();
+
+      final result = await connection.execute(
+        Sql.named(
+          'SELECT COUNT(*) FROM devices WHERE serial_number = @serialNumber',
+        ),
+        parameters: {'serialNumber': serialNumber},
+      );
+
+      final count = result.first[0] as int;
+      return count > 0;
+    } catch (e) {
+      debugPrint('خطأ في فحص Serial Number: $e');
+      return false;
+    }
+  }
+
+  // البحث عن جهاز بواسطة Serial Number
+  static Future<Device?> getDeviceBySerialNumber(String serialNumber) async {
+    try {
+      final connection = await _getConnection();
+
+      final result = await connection.execute(
+        Sql.named('SELECT * FROM devices WHERE serial_number = @serialNumber'),
+        parameters: {'serialNumber': serialNumber},
+      );
+
+      if (result.isNotEmpty) {
+        final row = result.first;
+        final Map<String, dynamic> map = {
+          'id': row[0],
+          'device_id': row[1],
+          'serial_number': row[2],
+          'client_name': row[3],
+          'client_phone1': row[4],
+          'client_phone2': row[5],
+          'gender': row[6],
+          'device_category': row[7],
+          'brand': row[8],
+          'model': row[9],
+          'operating_system': row[10],
+          'fault_type': row[11],
+          'fault_description': row[12],
+          'status': row[13],
+          'total_amount': row[14],
+          'advance_amount': row[15],
+          'remaining_amount': row[16],
+          'spare_parts': row[17],
+          'created_at': row[18],
+          'updated_at': row[19],
+        };
+        return Device.fromMap(map);
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('خطأ في البحث عن الجهاز بواسطة Serial Number: $e');
+      return null;
+    }
+  }
+
   // إضافة جهاز جديد
   static Future<int> addDevice(Device device) async {
     try {
+      // التحقق من وجود Serial Number مسبقاً
+      if (await isSerialNumberExists(device.serialNumber)) {
+        throw Exception('رقم السريال موجود بالفعل: ${device.serialNumber}');
+      }
+
       final connection = await _getConnection();
 
       final result = await connection.execute(
         Sql.named('''
           INSERT INTO devices (
-            device_id, client_name, client_phone1, client_phone2, gender,
+            device_id, serial_number, client_name, client_phone1, client_phone2, gender,
             device_category, brand, model, operating_system, fault_type,
             fault_description, status, total_amount, advance_amount,
             remaining_amount, spare_parts, created_at
           ) VALUES (
-            @device_id, @client_name, @client_phone1, @client_phone2, @gender,
+            @device_id, @serial_number, @client_name, @client_phone1, @client_phone2, @gender,
             @device_category, @brand, @model, @operating_system, @fault_type,
             @fault_description, @status, @total_amount, @advance_amount,
             @remaining_amount, @spare_parts, @created_at
@@ -162,6 +245,7 @@ class DatabaseService {
         '''),
         parameters: {
           'device_id': device.deviceId,
+          'serial_number': device.serialNumber,
           'client_name': device.clientName,
           'client_phone1': device.clientPhone1,
           'client_phone2':
@@ -258,6 +342,7 @@ class DatabaseService {
         Sql.named('''
           SELECT * FROM devices 
           WHERE device_id ILIKE @search 
+             OR serial_number ILIKE @search 
              OR client_name ILIKE @search 
              OR brand ILIKE @search 
              OR model ILIKE @search
@@ -315,6 +400,7 @@ class DatabaseService {
       await connection.execute(
         Sql.named('''
           UPDATE devices SET
+            serial_number = @serial_number,
             client_name = @client_name,
             client_phone1 = @client_phone1,
             client_phone2 = @client_phone2,
@@ -335,6 +421,7 @@ class DatabaseService {
         '''),
         parameters: {
           'id': device.id,
+          'serial_number': device.serialNumber,
           'client_name': device.clientName,
           'client_phone1': device.clientPhone1,
           'client_phone2':
@@ -556,18 +643,18 @@ class DatabaseService {
       final row = result.first.toColumnMap();
 
       // دالة مساعدة لتحويل القيم بأمان
-      int _parseInt(dynamic value) {
+      int parseInt(dynamic value) {
         if (value is int) return value;
         if (value is String) return int.tryParse(value) ?? 0;
         return 0;
       }
 
       return {
-        'total': _parseInt(row['total']),
-        'في الانتظار': _parseInt(row['pending']),
-        'قيد الإصلاح': _parseInt(row['in_progress']),
-        'مكتمل': _parseInt(row['completed']),
-        'ملغي': _parseInt(row['cancelled']),
+        'total': parseInt(row['total']),
+        'في الانتظار': parseInt(row['pending']),
+        'قيد الإصلاح': parseInt(row['in_progress']),
+        'مكتمل': parseInt(row['completed']),
+        'ملغي': parseInt(row['cancelled']),
       };
     } catch (e) {
       debugPrint('خطأ في جلب الإحصائيات: $e');
@@ -734,17 +821,17 @@ class DatabaseService {
       final row = result.first.toColumnMap();
 
       // دالة مساعدة لتحويل القيم بأمان
-      int _parseInt(dynamic value) {
+      int parseInt(dynamic value) {
         if (value is int) return value;
         if (value is String) return int.tryParse(value) ?? 0;
         return 0;
       }
 
       return {
-        'total': _parseInt(row['total']),
-        'unique_devices': _parseInt(row['unique_devices']),
-        'completed': _parseInt(row['completed']),
-        'last_month': _parseInt(row['last_month']),
+        'total': parseInt(row['total']),
+        'unique_devices': parseInt(row['unique_devices']),
+        'completed': parseInt(row['completed']),
+        'last_month': parseInt(row['last_month']),
       };
     } catch (e) {
       debugPrint('خطأ في جلب إحصائيات السجل: $e');

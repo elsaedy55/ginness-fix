@@ -203,7 +203,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
       backgroundColor: Colors.transparent,
       child: Container(
         width: 700,
-        height: 650,
+        constraints: const BoxConstraints(maxHeight: 650, minHeight: 400),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -395,200 +395,204 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
                       flex: 2,
                       child: Form(
                         key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'إضافة دفعة جديدة',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-
-                            // نوع الدفعة
-                            DropdownButtonFormField<String>(
-                              value: _selectedType,
-                              decoration: InputDecoration(
-                                labelText: 'نوع الدفعة',
-                                prefixIcon: const Icon(Icons.category),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: Colors.grey[300]!,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: Colors.green[600]!,
-                                  ),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'إضافة دفعة جديدة',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              items:
-                                  _paymentTypes
-                                      .map(
-                                        (type) => DropdownMenuItem(
-                                          value: type,
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                type == 'استرداد'
-                                                    ? Icons.undo
-                                                    : Icons.payment,
-                                                size: 16,
-                                                color:
-                                                    type == 'استرداد'
-                                                        ? Colors.red
-                                                        : Colors.green,
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Text(type),
-                                            ],
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedType = value!;
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 16),
+                              const SizedBox(height: 16),
 
-                            // المبلغ مع أزرار سريعة
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                TextFormField(
-                                  controller: _amountController,
-                                  decoration: InputDecoration(
-                                    labelText: 'المبلغ',
-                                    prefixIcon: const Icon(Icons.attach_money),
-                                    suffixText: '₪',
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: Colors.grey[300]!,
-                                      ),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: Colors.green[600]!,
-                                      ),
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'يرجى إدخال المبلغ';
-                                    }
-                                    if (double.tryParse(value) == null) {
-                                      return 'يرجى إدخال رقم صحيح';
-                                    }
-                                    if (double.parse(value) <= 0) {
-                                      return 'يجب أن يكون المبلغ أكبر من صفر';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 8),
-                                // أزرار التعبئة السريعة
-                                if (remaining > 0) ...[
-                                  Wrap(
-                                    spacing: 8,
-                                    children: [
-                                      _buildQuickAmountChip(
-                                        '${(remaining / 2).toStringAsFixed(0)} ₪',
-                                        remaining / 2,
-                                      ),
-                                      _buildQuickAmountChip(
-                                        '${remaining.toStringAsFixed(0)} ₪ (كامل)',
-                                        remaining,
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-
-                            // ملاحظات
-                            TextFormField(
-                              controller: _notesController,
-                              decoration: InputDecoration(
-                                labelText: 'ملاحظات (اختياري)',
-                                prefixIcon: const Icon(Icons.note),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: Colors.grey[300]!,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: Colors.green[600]!,
-                                  ),
-                                ),
-                              ),
-                              maxLines: 2,
-                            ),
-                            const SizedBox(height: 20),
-
-                            // زر الإضافة
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _addPayment,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green[600],
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
-                                  ),
-                                  shape: RoundedRectangleBorder(
+                              // نوع الدفعة
+                              DropdownButtonFormField<String>(
+                                value: _selectedType,
+                                decoration: InputDecoration(
+                                  labelText: 'نوع الدفعة',
+                                  prefixIcon: const Icon(Icons.category),
+                                  border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
-                                  elevation: 2,
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.grey[300]!,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.green[600]!,
+                                    ),
+                                  ),
                                 ),
-                                child:
-                                    _isLoading
-                                        ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                  Colors.white,
+                                items:
+                                    _paymentTypes
+                                        .map(
+                                          (type) => DropdownMenuItem(
+                                            value: type,
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  type == 'استرداد'
+                                                      ? Icons.undo
+                                                      : Icons.payment,
+                                                  size: 16,
+                                                  color:
+                                                      type == 'استرداد'
+                                                          ? Colors.red
+                                                          : Colors.green,
                                                 ),
+                                                const SizedBox(width: 8),
+                                                Text(type),
+                                              ],
+                                            ),
                                           ),
                                         )
-                                        : Text(
-                                          _selectedType == 'استرداد'
-                                              ? 'إضافة استرداد'
-                                              : 'إضافة دفعة',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
+                                        .toList(),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedType = value!;
+                                  });
+                                },
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 16),
+
+                              // المبلغ مع أزرار سريعة
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  TextFormField(
+                                    controller: _amountController,
+                                    decoration: InputDecoration(
+                                      labelText: 'المبلغ',
+                                      prefixIcon: const Icon(
+                                        Icons.attach_money,
+                                      ),
+                                      suffixText: '₪',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: Colors.grey[300]!,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: Colors.green[600]!,
+                                        ),
+                                      ),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'يرجى إدخال المبلغ';
+                                      }
+                                      if (double.tryParse(value) == null) {
+                                        return 'يرجى إدخال رقم صحيح';
+                                      }
+                                      if (double.parse(value) <= 0) {
+                                        return 'يجب أن يكون المبلغ أكبر من صفر';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // أزرار التعبئة السريعة
+                                  if (remaining > 0) ...[
+                                    Wrap(
+                                      spacing: 8,
+                                      children: [
+                                        _buildQuickAmountChip(
+                                          '${(remaining / 2).toStringAsFixed(0)} ₪',
+                                          remaining / 2,
+                                        ),
+                                        _buildQuickAmountChip(
+                                          '${remaining.toStringAsFixed(0)} ₪ (كامل)',
+                                          remaining,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              // ملاحظات
+                              TextFormField(
+                                controller: _notesController,
+                                decoration: InputDecoration(
+                                  labelText: 'ملاحظات (اختياري)',
+                                  prefixIcon: const Icon(Icons.note),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.grey[300]!,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.green[600]!,
+                                    ),
+                                  ),
+                                ),
+                                maxLines: 2,
+                              ),
+                              const SizedBox(height: 20),
+
+                              // زر الإضافة
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: _isLoading ? null : _addPayment,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green[600],
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    elevation: 2,
+                                  ),
+                                  child:
+                                      _isLoading
+                                          ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    Colors.white,
+                                                  ),
+                                            ),
+                                          )
+                                          : Text(
+                                            _selectedType == 'استرداد'
+                                                ? 'إضافة استرداد'
+                                                : 'إضافة دفعة',
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

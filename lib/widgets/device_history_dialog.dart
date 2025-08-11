@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/device_history.dart';
+import '../models/device.dart';
 import '../services/database_service.dart';
 
 class DeviceHistoryDialog extends StatefulWidget {
@@ -13,6 +14,7 @@ class DeviceHistoryDialog extends StatefulWidget {
 
 class _DeviceHistoryDialogState extends State<DeviceHistoryDialog> {
   List<DeviceHistory> _history = [];
+  Device? _currentDevice;
   bool _isLoading = true;
 
   @override
@@ -27,9 +29,17 @@ class _DeviceHistoryDialogState extends State<DeviceHistoryDialog> {
     });
 
     try {
+      // جلب السجل المؤرشف
       final history = await DatabaseService.getDeviceHistory(widget.deviceId);
+
+      // جلب الجهاز الحالي إن وجد
+      final allDevices = await DatabaseService.getAllDevices();
+      final currentDevice =
+          allDevices.where((d) => d.deviceId == widget.deviceId).firstOrNull;
+
       setState(() {
         _history = history;
+        _currentDevice = currentDevice;
         _isLoading = false;
       });
     } catch (e) {
@@ -84,7 +94,7 @@ class _DeviceHistoryDialogState extends State<DeviceHistoryDialog> {
               child:
                   _isLoading
                       ? const Center(child: CircularProgressIndicator())
-                      : _history.isEmpty
+                      : _history.isEmpty && _currentDevice == null
                       ? _buildEmptyState()
                       : _buildHistoryList(),
             ),
@@ -117,12 +127,202 @@ class _DeviceHistoryDialogState extends State<DeviceHistoryDialog> {
   }
 
   Widget _buildHistoryList() {
+    final totalItems = (_currentDevice != null ? 1 : 0) + _history.length;
+
     return ListView.builder(
-      itemCount: _history.length,
+      itemCount: totalItems,
       itemBuilder: (context, index) {
-        final entry = _history[index];
-        return _buildHistoryCard(entry, index);
+        // إذا كان هناك جهاز حالي، اعرضه أولاً
+        if (_currentDevice != null && index == 0) {
+          return _buildCurrentDeviceCard(_currentDevice!);
+        }
+
+        // اعرض السجل المؤرشف
+        final historyIndex = _currentDevice != null ? index - 1 : index;
+        final entry = _history[historyIndex];
+        return _buildHistoryCard(
+          entry,
+          historyIndex + (_currentDevice != null ? 2 : 1),
+        );
       },
+    );
+  }
+
+  Widget _buildCurrentDeviceCard(Device device) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 3,
+      color: Colors.blue[50],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.blue[300]!, width: 2),
+      ),
+      child: ExpansionTile(
+        leading: CircleAvatar(
+          backgroundColor: Colors.blue,
+          child: const Icon(Icons.settings, color: Colors.white, size: 20),
+        ),
+        title: Row(
+          children: [
+            Text(
+              device.faultType,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'حالي',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  _getStatusIcon(device.status),
+                  size: 16,
+                  color: _getStatusColor(device.status),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  device.status,
+                  style: TextStyle(
+                    color: _getStatusColor(device.status),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'دخل: ${_formatDate(device.createdAt)}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDetailRow('وصف العطل:', device.faultDescription),
+                if (device.spareParts.isNotEmpty)
+                  _buildDetailRow('قطع الغيار:', device.spareParts),
+                _buildDetailRow('العميل:', device.clientName),
+                _buildDetailRow('الهاتف:', device.clientPhone1),
+                if (device.clientPhone2.isNotEmpty)
+                  _buildDetailRow('هاتف إضافي:', device.clientPhone2),
+                _buildDetailRow(
+                  'الماركة:',
+                  '${device.brand} - ${device.model}',
+                ),
+                _buildDetailRow('نظام التشغيل:', device.operatingSystem),
+
+                const Divider(height: 24),
+
+                // المعلومات المالية
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildFinancialRow(
+                        'إجمالي التكلفة:',
+                        '${device.totalAmount.toStringAsFixed(2)} جنيه',
+                      ),
+                      _buildFinancialRow(
+                        'المقدم:',
+                        '${device.advanceAmount.toStringAsFixed(2)} جنيه',
+                      ),
+                      _buildFinancialRow(
+                        'المتبقي:',
+                        '${device.remainingAmount.toStringAsFixed(2)} جنيه',
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // أزرار تحديث الحالة
+                const Text(
+                  'تحديث الحالة:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (device.status != 'قيد الإصلاح')
+                      ElevatedButton.icon(
+                        onPressed:
+                            () => _updateCurrentDeviceStatus('قيد الإصلاح'),
+                        icon: const Icon(Icons.build, size: 16),
+                        label: const Text('قيد الإصلاح'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                        ),
+                      ),
+                    if (device.status != 'مكتمل')
+                      ElevatedButton.icon(
+                        onPressed: () => _updateCurrentDeviceStatus('مكتمل'),
+                        icon: const Icon(Icons.check_circle, size: 16),
+                        label: const Text('مكتمل'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                        ),
+                      ),
+                    if (device.status != 'في الانتظار')
+                      ElevatedButton.icon(
+                        onPressed:
+                            () => _updateCurrentDeviceStatus('في الانتظار'),
+                        icon: const Icon(Icons.hourglass_empty, size: 16),
+                        label: const Text('في الانتظار'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -294,5 +494,57 @@ class _DeviceHistoryDialogState extends State<DeviceHistoryDialog> {
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'مكتمل':
+        return Icons.check_circle;
+      case 'قيد الإصلاح':
+        return Icons.build_circle;
+      case 'ملغي':
+        return Icons.cancel;
+      default:
+        return Icons.pending;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'مكتمل':
+        return Colors.green;
+      case 'قيد الإصلاح':
+        return Colors.blue;
+      case 'ملغي':
+        return Colors.red;
+      default:
+        return Colors.orange;
+    }
+  }
+
+  // دالة تحديث حالة الجهاز الحالي
+  Future<void> _updateCurrentDeviceStatus(String newStatus) async {
+    if (_currentDevice == null) return;
+
+    try {
+      await DatabaseService.updateDeviceStatus(_currentDevice!.id!, newStatus);
+
+      // إعادة تحميل البيانات
+      await _loadHistory();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم تحديث حالة الجهاز إلى: $newStatus'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في تحديث الحالة: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }
