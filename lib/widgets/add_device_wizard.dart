@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import '../models/device.dart';
+import '../services/database_service.dart';
 
 class AddDeviceWizard extends StatefulWidget {
-  const AddDeviceWizard({super.key});
+  final Device? prefilledDevice;
+  final VoidCallback? onDeviceAdded;
+
+  const AddDeviceWizard({super.key, this.prefilledDevice, this.onDeviceAdded});
 
   @override
   State<AddDeviceWizard> createState() => _AddDeviceWizardState();
@@ -11,6 +16,7 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
   final _formKey = GlobalKey<FormState>();
   final _pageController = PageController();
   int _currentPage = 0;
+  bool _isLoading = false;
 
   // Controllers
   final TextEditingController _clientNameController = TextEditingController();
@@ -695,9 +701,37 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
   @override
   void initState() {
     super.initState();
-    // Generate unique device ID when dialog opens
-    _deviceId =
-        'GF-1-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+
+    if (widget.prefilledDevice != null) {
+      // إذا كان هناك جهاز مسبق التعبئة، استخدم نفس معرف الجهاز لإضافة عطل جديد
+      _deviceId = widget.prefilledDevice!.deviceId;
+
+      // تعبئة البيانات من الجهاز الموجود
+      _clientNameController.text = widget.prefilledDevice!.clientName;
+      _clientPhone1Controller.text = widget.prefilledDevice!.clientPhone1;
+      _clientPhone2Controller.text = widget.prefilledDevice!.clientPhone2;
+      _selectedGender = widget.prefilledDevice!.gender;
+      _selectedDeviceCategory = widget.prefilledDevice!.deviceCategory;
+      _selectedBrand = widget.prefilledDevice!.brand;
+      _selectedModel = widget.prefilledDevice!.model;
+      _selectedOS = widget.prefilledDevice!.operatingSystem;
+
+      // إعادة تعيين الحالة والعطل للعطل الجديد
+      _selectedStatus = 'في الانتظار';
+      _selectedFaultType = '';
+      _problemController.clear();
+      _totalAmountController.clear();
+      _advanceAmountController.clear();
+      _remainingAmountController.clear();
+    } else {
+      // إنشاء رقم جهاز فريد للجهاز الجديد
+      _deviceId = 'GF-1-Loading...'; // رقم مؤقت
+      _generateUniqueDeviceId();
+    }
+
+    // ربط المستمعين لحساب المبلغ المتبقي
+    _totalAmountController.addListener(_calculateRemaining);
+    _advanceAmountController.addListener(_calculateRemaining);
   }
 
   @override
@@ -796,28 +830,109 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
     });
   }
 
-  void _saveDevice() {
+  // توليد رقم جهاز فريد
+  Future<void> _generateUniqueDeviceId() async {
+    int attempts = 0;
+    const int maxAttempts = 10;
+
+    while (attempts < maxAttempts) {
+      // إنشاء رقم جهاز بناءً على التوقيت والرقم العشوائي
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final random = timestamp % 99999; // آخر 5 أرقام
+      final deviceId = 'GF-1-$random';
+
+      try {
+        // فحص إذا كان الرقم موجود مسبقاً
+        final existingDevices = await DatabaseService.searchDevices(deviceId);
+        if (existingDevices.isEmpty) {
+          setState(() {
+            _deviceId = deviceId;
+          });
+          return;
+        }
+        attempts++;
+
+        // انتظار قصير قبل المحاولة التالية
+        await Future.delayed(Duration(milliseconds: 10));
+      } catch (e) {
+        // في حالة خطأ في البحث، استخدم رقم عشوائي
+        final fallbackId =
+            'GF-1-${DateTime.now().millisecondsSinceEpoch % 99999}';
+        setState(() {
+          _deviceId = fallbackId;
+        });
+        return;
+      }
+    }
+
+    // إذا فشلت كل المحاولات، استخدم رقم بالتوقيت الكامل
+    setState(() {
+      _deviceId = 'GF-1-${DateTime.now().millisecondsSinceEpoch}';
+    });
+  }
+
+  void _saveDevice() async {
     if (_formKey.currentState!.validate()) {
-      // Use the device ID that was generated when dialog opened
+      try {
+        // إنشاء كائن الجهاز
+        final device = Device(
+          deviceId: _deviceId,
+          clientName: _clientNameController.text.trim(),
+          clientPhone1: _clientPhone1Controller.text.trim(),
+          clientPhone2: _clientPhone2Controller.text.trim(),
+          gender: _selectedGender,
+          deviceCategory: _selectedDeviceCategory,
+          brand: _selectedBrand,
+          model: _selectedModel,
+          operatingSystem: _selectedOS,
+          faultType: _selectedFaultType,
+          faultDescription: _problemController.text.trim(),
+          status: _selectedStatus,
+          totalAmount: double.tryParse(_totalAmountController.text) ?? 0.0,
+          advanceAmount: double.tryParse(_advanceAmountController.text) ?? 0.0,
+          remainingAmount:
+              double.tryParse(_remainingAmountController.text) ?? 0.0,
+          spareParts: _materialsController.text.trim(),
+          createdAt: DateTime.now(),
+        );
 
-      // TODO: Save device to database or state management
+        // حفظ الجهاز في قاعدة البيانات
+        await DatabaseService.addDevice(device);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تم إضافة الجهاز بنجاح! رقم الجهاز: $_deviceId'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'نسخ الكود',
-            textColor: Colors.white,
-            onPressed: () {
-              // TODO: Copy device ID to clipboard
-            },
+        // إظهار رسالة نجاح
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.prefilledDevice != null
+                  ? 'تم إضافة العطل الجديد بنجاح! رقم الجهاز: $_deviceId'
+                  : 'تم إضافة الجهاز بنجاح! رقم الجهاز: $_deviceId',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'نسخ الكود',
+              textColor: Colors.white,
+              onPressed: () {
+                // TODO: Copy device ID to clipboard
+              },
+            ),
           ),
-        ),
-      );
+        );
 
-      Navigator.of(context).pop();
+        Navigator.of(context).pop();
+
+        // استدعاء callback لتحديث القائمة
+        if (widget.onDeviceAdded != null) {
+          widget.onDeviceAdded!();
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في إضافة الجهاز: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1040,9 +1155,21 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
                     )
                   else
                     ElevatedButton.icon(
-                      onPressed: _saveDevice,
-                      icon: const Icon(Icons.save),
-                      label: const Text('حفظ'),
+                      onPressed: _isLoading ? null : _saveDevice,
+                      icon:
+                          _isLoading
+                              ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                              : const Icon(Icons.save),
+                      label: Text(_isLoading ? 'جاري الحفظ...' : 'حفظ'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,

@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import 'add_device_wizard.dart';
+import 'edit_device_dialog.dart';
+import 'add_payment_dialog.dart';
+import 'device_details_dialog.dart';
+import 'device_history_dialog.dart';
+import 'add_new_fault_simple_dialog.dart';
+import '../models/device.dart';
+import '../services/database_service.dart';
 
 class DevicesManagement extends StatefulWidget {
   const DevicesManagement({super.key});
@@ -15,6 +22,245 @@ class _DevicesManagementState extends State<DevicesManagement> {
   String _selectedDateFilter = 'كل التواريخ';
   DateTimeRange? _selectedDateRange;
   final TextEditingController _searchController = TextEditingController();
+
+  // قائمة الأجهزة من قاعدة البيانات
+  List<Device> _devices = [];
+  List<Device> _filteredDevices = [];
+  bool _isLoading = true;
+  String _errorMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDevices();
+  }
+
+  // تحميل الأجهزة من قاعدة البيانات
+  Future<void> _loadDevices() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      final devices = await DatabaseService.getAllDevices();
+      setState(() {
+        _devices = devices;
+        _filteredDevices = devices;
+        _isLoading = false;
+      });
+      _applyFilters();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'خطأ في تحميل الأجهزة: ${e.toString()}';
+      });
+    }
+  }
+
+  // تطبيق الفلاتر
+  void _applyFilters() {
+    List<Device> filtered =
+        _devices.where((device) {
+          // فلتر البحث النصي
+          final searchTerm = _searchController.text.toLowerCase();
+          if (searchTerm.isNotEmpty) {
+            if (!device.deviceId.toLowerCase().contains(searchTerm) &&
+                !device.clientName.toLowerCase().contains(searchTerm) &&
+                !device.faultDescription.toLowerCase().contains(searchTerm) &&
+                !device.faultType.toLowerCase().contains(searchTerm)) {
+              return false;
+            }
+          }
+
+          // فلتر الحالة
+          if (_selectedStatus != 'الكل' && device.status != _selectedStatus) {
+            return false;
+          }
+
+          // فلتر نوع العطل
+          if (_selectedFaultType != 'الكل' &&
+              device.faultType != _selectedFaultType) {
+            return false;
+          }
+
+          // فلتر نوع الجهاز
+          if (_selectedDeviceType != 'الكل' &&
+              device.deviceCategory != _selectedDeviceType) {
+            return false;
+          }
+
+          return true;
+        }).toList();
+
+    setState(() {
+      _filteredDevices = filtered;
+    });
+  }
+
+  // إضافة عطل جديد للجهاز (نفس الجهاز بعطل جديد)
+  void _addNewFault(Device device) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AddNewFaultSimpleDialog(
+            existingDevice: device,
+            onFaultAdded: _loadDevices,
+          ),
+    );
+  }
+
+  // تعديل الجهاز
+  void _editDevice(Device device) {
+    showDialog(
+      context: context,
+      builder:
+          (context) =>
+              EditDeviceDialog(device: device, onDeviceUpdated: _loadDevices),
+    );
+  }
+
+  // إضافة دفعة للجهاز
+  void _addPayment(Device device) {
+    showDialog(
+      context: context,
+      builder:
+          (context) =>
+              AddPaymentDialog(device: device, onPaymentAdded: _loadDevices),
+    );
+  }
+
+  // عرض تفاصيل الجهاز
+  void _showDeviceDetails(Device device) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => DeviceDetailsDialog(
+            device: device,
+            onDeviceUpdated: _loadDevices,
+          ),
+    );
+  }
+
+  // عرض سجل الجهاز
+  void _showDeviceHistory(Device device) {
+    showDialog(
+      context: context,
+      builder: (context) => DeviceHistoryDialog(deviceId: device.deviceId),
+    );
+  }
+
+  // حذف جهاز
+  void _deleteDevice(Device device) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('تأكيد الحذف'),
+            content: Text('هل أنت متأكد من حذف الجهاز ${device.deviceId}؟'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('إلغاء'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await _performDeleteDevice(device);
+                },
+                child: const Text('حذف', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // تنفيذ حذف الجهاز
+  Future<void> _performDeleteDevice(Device device) async {
+    try {
+      if (device.id != null) {
+        // أرشفة الجهاز في السجل قبل الحذف
+        await DatabaseService.archiveDevice(
+          device,
+          notes: 'تم حذف الجهاز من النظام',
+        );
+
+        // حذف الجهاز من الجدول الحالي
+        await DatabaseService.deleteDevice(device.id!);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'تم حذف الجهاز ${device.deviceId} بنجاح وإضافته للسجل',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadDevices();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في حذف الجهاز: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // بناء أزرار الإجراءات للجهاز
+  List<Widget> _buildActionButtons(Device device) {
+    return [
+      // زر عرض السجل
+      IconButton(
+        onPressed: () => _showDeviceHistory(device),
+        icon: const Icon(Icons.history, color: Colors.purple, size: 16),
+        tooltip: 'سجل الجهاز',
+        padding: const EdgeInsets.all(2),
+        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      ),
+      // زر عرض التفاصيل
+      IconButton(
+        onPressed: () => _showDeviceDetails(device),
+        icon: const Icon(Icons.info, color: Colors.orange, size: 16),
+        tooltip: 'عرض التفاصيل',
+        padding: const EdgeInsets.all(2),
+        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      ),
+      // زر إضافة عطل جديد
+      IconButton(
+        onPressed: () => _addNewFault(device),
+        icon: const Icon(Icons.add_circle, color: Colors.indigo, size: 16),
+        tooltip: 'إضافة عطل جديد',
+        padding: const EdgeInsets.all(2),
+        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      ),
+      // زر إضافة دفعة
+      IconButton(
+        onPressed: () => _addPayment(device),
+        icon: const Icon(Icons.payment, color: Colors.green, size: 16),
+        tooltip: 'إضافة دفعة',
+        padding: const EdgeInsets.all(2),
+        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      ),
+      // زر التعديل
+      IconButton(
+        onPressed: () => _editDevice(device),
+        icon: const Icon(Icons.edit, color: Colors.blue, size: 16),
+        tooltip: 'تعديل',
+        padding: const EdgeInsets.all(2),
+        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      ),
+      // زر الحذف
+      IconButton(
+        onPressed: () => _deleteDevice(device),
+        icon: const Icon(Icons.delete, color: Colors.red, size: 16),
+        tooltip: 'حذف',
+        padding: const EdgeInsets.all(2),
+        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      ),
+    ];
+  }
 
   final List<String> _dateFilterOptions = [
     'كل التواريخ',
@@ -55,46 +301,6 @@ class _DevicesManagementState extends State<DevicesManagement> {
     'لاب توب',
   ];
 
-  // قائمة الأجهزة (مبسطة)
-  final List<Map<String, String>> _allDevices = [
-    {
-      'id': 'GF-1-0001',
-      'name': 'iPhone 13 Pro',
-      'deviceType': 'iPhone/iOS',
-      'client': 'محمد أحمد السعدي',
-      'phone': '0599123456',
-      'faultType': 'هاردوير',
-      'problem': 'شاشة مكسورة',
-      'status': 'قيد الإصلاح',
-      'cost': '250',
-      'date': '2024/12/15',
-    },
-    {
-      'id': 'GF-1-0002',
-      'name': 'Samsung Galaxy S21',
-      'deviceType': 'Android',
-      'client': 'فاطمة علي محمد',
-      'phone': '0598765432',
-      'faultType': 'بطارية',
-      'problem': 'بطارية لا تشحن',
-      'status': 'مكتمل',
-      'cost': '180',
-      'date': '2024/12/14',
-    },
-    {
-      'id': 'GF-1-0003',
-      'name': 'MacBook Pro M1',
-      'deviceType': 'Mac',
-      'client': 'عبد الله إبراهيم',
-      'phone': '0597654321',
-      'faultType': 'سوفت وير',
-      'problem': 'لا يعمل',
-      'status': 'في الانتظار',
-      'cost': '400',
-      'date': '2024/12/13',
-    },
-  ];
-
   // التحقق من وجود فلاتر نشطة
   bool get _hasActiveFilters {
     return _selectedStatus != 'الكل' ||
@@ -102,56 +308,6 @@ class _DevicesManagementState extends State<DevicesManagement> {
         _selectedDeviceType != 'الكل' ||
         _selectedDateFilter != 'كل التواريخ' ||
         _searchController.text.isNotEmpty;
-  }
-
-  // فلترة الأجهزة
-  List<Map<String, String>> get _filteredDevices {
-    return _allDevices.where((device) {
-      // فلترة البحث
-      if (_searchController.text.isNotEmpty) {
-        final searchTerm = _searchController.text.toLowerCase();
-        if (!device['id']!.toLowerCase().contains(searchTerm) &&
-            !device['client']!.toLowerCase().contains(searchTerm) &&
-            !device['problem']!.toLowerCase().contains(searchTerm) &&
-            !device['faultType']!.toLowerCase().contains(searchTerm)) {
-          return false;
-        }
-      }
-
-      // فلترة الحالة
-      if (_selectedStatus != 'الكل' && device['status'] != _selectedStatus) {
-        return false;
-      }
-
-      // فلترة نوع العطل
-      if (_selectedFaultType != 'الكل' &&
-          device['faultType'] != _selectedFaultType) {
-        return false;
-      }
-
-      // فلترة نوع الجهاز
-      if (_selectedDeviceType != 'الكل' &&
-          device['deviceType'] != _selectedDeviceType) {
-        return false;
-      }
-
-      // فلترة التاريخ
-      if (_selectedDateRange != null) {
-        try {
-          final deviceDate = DateTime.parse(
-            device['date']!.replaceAll('/', '-'),
-          );
-          if (deviceDate.isBefore(_selectedDateRange!.start) ||
-              deviceDate.isAfter(_selectedDateRange!.end)) {
-            return false;
-          }
-        } catch (e) {
-          return false;
-        }
-      }
-
-      return true;
-    }).toList();
   }
 
   // مسح جميع الفلاتر
@@ -661,7 +817,10 @@ class _DevicesManagementState extends State<DevicesManagement> {
                             onTap: () {
                               showDialog(
                                 context: context,
-                                builder: (context) => const AddDeviceWizard(),
+                                builder:
+                                    (context) => AddDeviceWizard(
+                                      onDeviceAdded: _loadDevices,
+                                    ),
                               );
                             },
                             child: Padding(
@@ -697,6 +856,60 @@ class _DevicesManagementState extends State<DevicesManagement> {
                                   ),
                                 ],
                               ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 12),
+
+                      // زر تحديث البيانات
+                      Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.grey[300]!,
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: _isLoading ? null : _loadDevices,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              child:
+                                  _isLoading
+                                      ? SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.blue[600]!,
+                                              ),
+                                        ),
+                                      )
+                                      : Icon(
+                                        Icons.refresh_rounded,
+                                        color: Colors.blue[600],
+                                        size: 20,
+                                      ),
                             ),
                           ),
                         ),
@@ -766,7 +979,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
 
           const SizedBox(height: 16),
 
-          // معلومات النتائج
+          // معلومات النتائج مع زر التحديث
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
@@ -778,10 +991,59 @@ class _DevicesManagementState extends State<DevicesManagement> {
                 Icon(Icons.info_outline, size: 16, color: Colors.blue[700]),
                 const SizedBox(width: 8),
                 Text(
-                  'عرض ${_filteredDevices.length} من أصل ${_allDevices.length} جهاز',
+                  'عرض ${_filteredDevices.length} من أصل ${_devices.length} جهاز',
                   style: TextStyle(
                     color: Colors.blue[700],
                     fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const Spacer(),
+                // زر التحديث
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: _isLoading ? null : _loadDevices,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _isLoading
+                              ? SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.blue[700]!,
+                                  ),
+                                ),
+                              )
+                              : Icon(
+                                Icons.refresh,
+                                size: 14,
+                                color: Colors.blue[700],
+                              ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _isLoading ? 'جاري التحميل...' : 'تحديث',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -860,141 +1122,228 @@ class _DevicesManagementState extends State<DevicesManagement> {
                     ),
                   ),
 
-                  // محتوى الجدول
+                  // محتوى الجدول مع مؤشر التحميل
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: _filteredDevices.length,
-                      itemBuilder: (context, index) {
-                        final device = _filteredDevices[index];
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(color: Colors.grey[200]!),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  device['id']!,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
+                    child:
+                        _isLoading
+                            ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.blue[600]!,
+                                    ),
                                   ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 3,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      device['client']!,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'جاري تحميل الأجهزة...',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey[600],
+                                      fontWeight: FontWeight.w500,
                                     ),
-                                    Text(
-                                      device['phone']!,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
-                              Expanded(
-                                flex: 2,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(device['faultType']!),
-                                    Text(
-                                      device['problem']!,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
+                            )
+                            : _errorMessage.isNotEmpty
+                            ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.error_outline,
+                                    size: 48,
+                                    color: Colors.red[400],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _errorMessage,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.red[600],
+                                      fontWeight: FontWeight.w500,
                                     ),
-                                  ],
-                                ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  ElevatedButton.icon(
+                                    onPressed: _loadDevices,
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('إعادة المحاولة'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue[600],
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              Expanded(
-                                flex: 2,
-                                child: Container(
+                            )
+                            : _filteredDevices.isEmpty
+                            ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.devices_other,
+                                    size: 48,
+                                    color: Colors.grey[400],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'لا توجد أجهزة',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      color: Colors.grey[600],
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'قم بإضافة أول جهاز للبدء',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                            : ListView.builder(
+                              itemCount: _filteredDevices.length,
+                              itemBuilder: (context, index) {
+                                final device = _filteredDevices[index];
+                                return Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
+                                    horizontal: 16,
+                                    vertical: 12,
                                   ),
                                   decoration: BoxDecoration(
-                                    color:
-                                        device['status'] == 'مكتمل'
-                                            ? Colors.green[100]
-                                            : device['status'] == 'قيد الإصلاح'
-                                            ? Colors.orange[100]
-                                            : device['status'] == 'في الانتظار'
-                                            ? Colors.blue[100]
-                                            : Colors.red[100],
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    device['status']!,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color:
-                                          device['status'] == 'مكتمل'
-                                              ? Colors.green[700]
-                                              : device['status'] ==
-                                                  'قيد الإصلاح'
-                                              ? Colors.orange[700]
-                                              : device['status'] ==
-                                                  'في الانتظار'
-                                              ? Colors.blue[700]
-                                              : Colors.red[700],
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: Colors.grey[200]!,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 1,
-                                child: Text(
-                                  '${device['cost']} ₪',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          device.deviceId,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 3,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              device.clientName,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            Text(
+                                              device.clientPhone1,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(device.faultType),
+                                            Text(
+                                              device.faultDescription,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                device.status == 'مكتمل'
+                                                    ? Colors.green[100]
+                                                    : device.status ==
+                                                        'قيد الإصلاح'
+                                                    ? Colors.orange[100]
+                                                    : device.status ==
+                                                        'في الانتظار'
+                                                    ? Colors.blue[100]
+                                                    : Colors.red[100],
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            device.status,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color:
+                                                  device.status == 'مكتمل'
+                                                      ? Colors.green[700]
+                                                      : device.status ==
+                                                          'قيد الإصلاح'
+                                                      ? Colors.orange[700]
+                                                      : device.status ==
+                                                          'في الانتظار'
+                                                      ? Colors.blue[700]
+                                                      : Colors.red[700],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 1,
+                                        child: Text(
+                                          '${device.totalAmount} ₪',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 1,
+                                        child: SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: _buildActionButtons(
+                                              device,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 1,
-                                child: PopupMenuButton<String>(
-                                  icon: const Icon(Icons.more_vert),
-                                  itemBuilder:
-                                      (context) => [
-                                        const PopupMenuItem(
-                                          value: 'edit',
-                                          child: Text('تحرير'),
-                                        ),
-                                        const PopupMenuItem(
-                                          value: 'delete',
-                                          child: Text('حذف'),
-                                        ),
-                                      ],
-                                  onSelected: (value) {
-                                    // TODO: تنفيذ الإجراءات
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                                );
+                              },
+                            ),
                   ),
                 ],
               ),
