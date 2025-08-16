@@ -173,7 +173,7 @@ class _DeviceDetailsDialogState extends State<DeviceDetailsDialog> {
                               ),
                               _buildInfoRow(
                                 'الرقم التسلسلي:',
-                                widget.device.serialNumber,
+                                widget.device.serialNumber ?? '-',
                               ),
                               _buildInfoRow(
                                 'نوع الجهاز:',

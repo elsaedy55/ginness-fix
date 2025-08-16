@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'add_device_wizard.dart';
+import 'dart:async';
+import 'package:ginness/widgets/add_device_wizard.dart';
 import 'edit_device_dialog.dart';
 import 'add_payment_dialog.dart';
 import 'device_details_dialog.dart';
@@ -28,45 +29,103 @@ class _DevicesManagementState extends State<DevicesManagement> {
   List<Device> _filteredDevices = [];
   bool _isLoading = true;
   String _errorMessage = '';
+  // pagination
+  static const int _pageSize = 30;
+  int _offset = 0;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+
+  // debounce for search
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
-    _loadDevices();
+    _resetAndLoad();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
   }
 
   // تحميل الأجهزة من قاعدة البيانات
-  Future<void> _loadDevices() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
+  // Reset pagination and load first page
+  Future<void> _resetAndLoad() async {
+    _offset = 0;
+    _hasMore = true;
+    _devices = [];
+    _filteredDevices = [];
+    await _loadNextPage(replace: true);
+  }
+
+  // Load next page from server
+  Future<void> _loadNextPage({bool replace = false}) async {
+    if (!_hasMore && !replace) return;
+
+    if (replace) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = '';
+      });
+    } else {
+      setState(() => _isLoadingMore = true);
+    }
 
     try {
-      final devices = await DatabaseService.getAllDevices();
+      final results = await DatabaseService.getDevicesPaged(
+        limit: _pageSize,
+        offset: _offset,
+        searchTerm:
+            _searchController.text.trim().isEmpty
+                ? null
+                : _searchController.text.trim(),
+        status: _selectedStatus,
+        deviceCategory: _selectedDeviceType,
+        faultType: _selectedFaultType,
+        startDate: _selectedDateRange?.start,
+        endDate: _selectedDateRange?.end,
+      );
+
       setState(() {
-        _devices = devices;
-        _filteredDevices = devices;
-        _isLoading = false;
+        if (replace) {
+          _devices = results;
+        } else {
+          _devices.addAll(results);
+        }
+
+        _filteredDevices = List.from(_devices);
+        _offset += results.length;
+        _hasMore = results.length >= _pageSize;
       });
-      _applyFilters();
     } catch (e) {
       setState(() {
-        _isLoading = false;
         _errorMessage = 'خطأ في تحميل الأجهزة: ${e.toString()}';
       });
+    } finally {
+      if (replace) {
+        setState(() {
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoadingMore = false);
+      }
     }
   }
 
   // تطبيق الفلاتر
   void _applyFilters() {
+    // Client-side filtering is still applied to the currently loaded page(s)
     List<Device> filtered =
         _devices.where((device) {
           // فلتر البحث النصي
           final searchTerm = _searchController.text.toLowerCase();
           if (searchTerm.isNotEmpty) {
+            final serial = (device.serialNumber ?? '').toLowerCase();
             if (!device.deviceId.toLowerCase().contains(searchTerm) &&
-                !device.serialNumber.toLowerCase().contains(searchTerm) &&
+                !serial.contains(searchTerm) &&
                 !device.clientName.toLowerCase().contains(searchTerm) &&
                 !device.faultDescription.toLowerCase().contains(searchTerm) &&
                 !device.faultType.toLowerCase().contains(searchTerm)) {
@@ -91,11 +150,48 @@ class _DevicesManagementState extends State<DevicesManagement> {
             return false;
           }
 
+          // فلتر التاريخ: قارن تواريخ فقط (بالتوقيت المحلي) لتجنب مشاكل الـ timezone
+          if (_selectedDateRange != null) {
+            // Use date-only comparison to avoid timezone edge cases
+            final deviceDateLocal = device.createdAt.toLocal();
+            final deviceDateOnly = DateTime(
+              deviceDateLocal.year,
+              deviceDateLocal.month,
+              deviceDateLocal.day,
+            );
+
+            final startDateOnly = DateTime(
+              _selectedDateRange!.start.year,
+              _selectedDateRange!.start.month,
+              _selectedDateRange!.start.day,
+            );
+
+            final endDateOnly = DateTime(
+              _selectedDateRange!.end.year,
+              _selectedDateRange!.end.month,
+              _selectedDateRange!.end.day,
+            );
+
+            if (deviceDateOnly.isBefore(startDateOnly) ||
+                deviceDateOnly.isAfter(endDateOnly)) {
+              return false;
+            }
+          }
+
           return true;
         }).toList();
 
     setState(() {
       _filteredDevices = filtered;
+    });
+  }
+
+  // Triggered by search input with debounce to avoid frequent DB calls
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () async {
+      // Reset and fetch from server using search term
+      await _resetAndLoad();
     });
   }
 
@@ -106,7 +202,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
       builder:
           (context) => AddNewFaultSimpleDialog(
             existingDevice: device,
-            onFaultAdded: _loadDevices,
+            onFaultAdded: _resetAndLoad,
           ),
     );
   }
@@ -117,7 +213,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
       context: context,
       builder:
           (context) =>
-              EditDeviceDialog(device: device, onDeviceUpdated: _loadDevices),
+              EditDeviceDialog(device: device, onDeviceUpdated: _resetAndLoad),
     );
   }
 
@@ -127,7 +223,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
       context: context,
       builder:
           (context) =>
-              AddPaymentDialog(device: device, onPaymentAdded: _loadDevices),
+              AddPaymentDialog(device: device, onPaymentAdded: _resetAndLoad),
     );
   }
 
@@ -138,7 +234,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
       builder:
           (context) => DeviceDetailsDialog(
             device: device,
-            onDeviceUpdated: _loadDevices,
+            onDeviceUpdated: _resetAndLoad,
           ),
     );
   }
@@ -197,7 +293,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
             backgroundColor: Colors.green,
           ),
         );
-        _loadDevices();
+        await _resetAndLoad();
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -281,14 +377,11 @@ class _DevicesManagementState extends State<DevicesManagement> {
 
   final List<String> _faultTypeOptions = [
     'الكل',
-    'سوفت وير',
-    'هاردوير',
-    'شاشة',
-    'بطارية',
-    'مياه',
-    'شبكة',
-    'صوت',
-    'كاميرا',
+    'سوفتوير',
+    'Jetag',
+    'هاردوير ايفون',
+    'هاردوير اندرويد',
+    'باغه / شاشه',
     'أخرى',
   ];
 
@@ -320,6 +413,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
       _selectedDateFilter = 'كل التواريخ';
       _selectedDateRange = null;
       _searchController.clear();
+      _applyFilters();
     });
   }
 
@@ -333,7 +427,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
         case 'اليوم':
           _selectedDateRange = DateTimeRange(
             start: DateTime(now.year, now.month, now.day),
-            end: DateTime(now.year, now.month, now.day, 23, 59, 59),
+            end: DateTime(now.year, now.month, now.day, 23, 59, 59, 999),
           );
           break;
         case 'هذا الأسبوع':
@@ -344,13 +438,14 @@ class _DevicesManagementState extends State<DevicesManagement> {
               startOfWeek.month,
               startOfWeek.day,
             ),
-            end: DateTime(now.year, now.month, now.day, 23, 59, 59),
+            end: DateTime(now.year, now.month, now.day, 23, 59, 59, 999),
           );
           break;
         case 'هذا الشهر':
           _selectedDateRange = DateTimeRange(
             start: DateTime(now.year, now.month, 1),
-            end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
+            // DateTime handles month overflow; day 0 gives last day of previous month
+            end: DateTime(now.year, now.month + 1, 0, 23, 59, 59, 999),
           );
           break;
         case 'اختيار مخصص':
@@ -725,6 +820,12 @@ class _DevicesManagementState extends State<DevicesManagement> {
     );
   }
 
+  final TextStyle headerStyle = const TextStyle(
+    fontWeight: FontWeight.w600,
+    fontSize: 14,
+    color: Color(0xFF616161), // grey[700]
+  );
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -756,7 +857,10 @@ class _DevicesManagementState extends State<DevicesManagement> {
                           ),
                           child: TextField(
                             controller: _searchController,
-                            onChanged: (value) => setState(() {}),
+                            onChanged: (value) {
+                              // Apply filters as the user types
+                              _applyFilters();
+                            },
                             decoration: InputDecoration(
                               hintText: 'ابحث عن جهاز، عميل، أو نوع العطل...',
                               hintStyle: TextStyle(color: Colors.grey[600]),
@@ -772,9 +876,10 @@ class _DevicesManagementState extends State<DevicesManagement> {
                                           color: Colors.grey[600],
                                         ),
                                         onPressed: () {
-                                          setState(() {
-                                            _searchController.clear();
-                                          });
+                                          // Clear search and reapply filters
+                                          _searchController.clear();
+                                          _applyFilters();
+                                          setState(() {});
                                         },
                                       )
                                       : null,
@@ -787,10 +892,8 @@ class _DevicesManagementState extends State<DevicesManagement> {
                           ),
                         ),
                       ),
-
                       const SizedBox(width: 16),
-
-                      // زر إضافة الجهاز العصري والهادئ
+                      // زر إضافة الجهاز
                       Container(
                         height: 48,
                         decoration: BoxDecoration(
@@ -820,7 +923,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
                                 context: context,
                                 builder:
                                     (context) => AddDeviceWizard(
-                                      onDeviceAdded: _loadDevices,
+                                      onDeviceAdded: _resetAndLoad,
                                     ),
                               );
                             },
@@ -861,9 +964,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
                           ),
                         ),
                       ),
-
                       const SizedBox(width: 12),
-
                       // زر تحديث البيانات
                       Container(
                         height: 48,
@@ -887,7 +988,7 @@ class _DevicesManagementState extends State<DevicesManagement> {
                           borderRadius: BorderRadius.circular(12),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
-                            onTap: _isLoading ? null : _loadDevices,
+                            onTap: _isLoading ? null : _resetAndLoad,
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -917,671 +1018,258 @@ class _DevicesManagementState extends State<DevicesManagement> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 16),
-
-                  // الفلاتر العصرية
+                  // الفلاتر الجديدة
                   Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Row(
-                        children: [
-                          _buildSimpleFilter(
-                            label: 'الحالة',
-                            value: _selectedStatus,
-                            options: _statusOptions,
-                            onChanged:
-                                (value) =>
-                                    setState(() => _selectedStatus = value),
-                            icon: Icons.task_alt_rounded,
-                          ),
-
-                          const SizedBox(width: 16),
-
-                          _buildSimpleFilter(
-                            label: 'نوع العطل',
-                            value: _selectedFaultType,
-                            options: _faultTypeOptions,
-                            onChanged:
-                                (value) =>
-                                    setState(() => _selectedFaultType = value),
-                            icon: Icons.build_rounded,
-                          ),
-
-                          const SizedBox(width: 16),
-
-                          _buildSimpleFilter(
-                            label: 'نوع الجهاز',
-                            value: _selectedDeviceType,
-                            options: _deviceTypeOptions,
-                            onChanged:
-                                (value) =>
-                                    setState(() => _selectedDeviceType = value),
-                            icon: Icons.devices_rounded,
-                          ),
-
-                          const SizedBox(width: 16),
-
-                          _buildDateFilter(),
-
-                          const SizedBox(width: 16),
-
-                          if (_hasActiveFilters) _buildClearButton(),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // معلومات النتائج مع زر التحديث
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.blue[50],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, size: 16, color: Colors.blue[700]),
-                const SizedBox(width: 8),
-                Text(
-                  'عرض ${_filteredDevices.length} من أصل ${_devices.length} جهاز',
-                  style: TextStyle(
-                    color: Colors.blue[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const Spacer(),
-                // زر التحديث
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: _isLoading ? null : _loadDevices,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[100],
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _isLoading
-                              ? SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.blue[700]!,
-                                  ),
-                                ),
-                              )
-                              : Icon(
-                                Icons.refresh,
-                                size: 14,
-                                color: Colors.blue[700],
-                              ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _isLoading ? 'جاري التحميل...' : 'تحديث',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue[700],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // جدول الأجهزة مع تصميم Shopify
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.1),
-                    spreadRadius: 0,
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  // رأس الجدول بتصميم Shopify
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
-                      ),
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey[200]!, width: 1),
-                      ),
-                    ),
-                    child: Row(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
                       children: [
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'الجهاز',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
+                        FilterChip(
+                          label: Text('الحالة: $_selectedStatus'),
+                          selected: _selectedStatus != 'الكل',
+                          avatar: Icon(
+                            Icons.task_alt_rounded,
+                            size: 18,
+                            color: Colors.blue,
                           ),
+                          onSelected: (_) async {
+                            final result = await showDialog<String>(
+                              context: context,
+                              builder:
+                                  (context) => SimpleDialog(
+                                    title: Text('اختر الحالة'),
+                                    children:
+                                        _statusOptions
+                                            .map(
+                                              (opt) => SimpleDialogOption(
+                                                child: Text(opt),
+                                                onPressed:
+                                                    () => Navigator.pop(
+                                                      context,
+                                                      opt,
+                                                    ),
+                                              ),
+                                            )
+                                            .toList(),
+                                  ),
+                            );
+                            if (result != null) {
+                              setState(() {
+                                _selectedStatus = result;
+                                _applyFilters();
+                              });
+                            }
+                          },
+                          selectedColor: Colors.blue[100],
                         ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'السيريال',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
+                        FilterChip(
+                          label: Text('نوع العطل: $_selectedFaultType'),
+                          selected: _selectedFaultType != 'الكل',
+                          avatar: Icon(
+                            Icons.build_rounded,
+                            size: 18,
+                            color: Colors.orange,
                           ),
+                          onSelected: (_) async {
+                            final result = await showDialog<String>(
+                              context: context,
+                              builder:
+                                  (context) => SimpleDialog(
+                                    title: Text('اختر نوع العطل'),
+                                    children:
+                                        _faultTypeOptions
+                                            .map(
+                                              (opt) => SimpleDialogOption(
+                                                child: Text(opt),
+                                                onPressed:
+                                                    () => Navigator.pop(
+                                                      context,
+                                                      opt,
+                                                    ),
+                                              ),
+                                            )
+                                            .toList(),
+                                  ),
+                            );
+                            if (result != null) {
+                              setState(() {
+                                _selectedFaultType = result;
+                                _applyFilters();
+                              });
+                            }
+                          },
+                          selectedColor: Colors.orange[100],
                         ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'العميل',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
+                        FilterChip(
+                          label: Text('نوع الجهاز: $_selectedDeviceType'),
+                          selected: _selectedDeviceType != 'الكل',
+                          avatar: Icon(
+                            Icons.devices_rounded,
+                            size: 18,
+                            color: Colors.green,
                           ),
+                          onSelected: (_) async {
+                            final result = await showDialog<String>(
+                              context: context,
+                              builder:
+                                  (context) => SimpleDialog(
+                                    title: Text('اختر نوع الجهاز'),
+                                    children:
+                                        _deviceTypeOptions
+                                            .map(
+                                              (opt) => SimpleDialogOption(
+                                                child: Text(opt),
+                                                onPressed:
+                                                    () => Navigator.pop(
+                                                      context,
+                                                      opt,
+                                                    ),
+                                              ),
+                                            )
+                                            .toList(),
+                                  ),
+                            );
+                            if (result != null) {
+                              setState(() {
+                                _selectedDeviceType = result;
+                                _applyFilters();
+                              });
+                            }
+                          },
+                          selectedColor: Colors.green[100],
                         ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'العطل',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
+                        FilterChip(
+                          label: Text('التاريخ: $_selectedDateFilter'),
+                          selected: _selectedDateFilter != 'كل التواريخ',
+                          avatar: Icon(
+                            Icons.calendar_today_rounded,
+                            size: 18,
+                            color: Colors.purple,
                           ),
+                          onSelected: (_) async {
+                            final result = await showDialog<String>(
+                              context: context,
+                              builder:
+                                  (context) => SimpleDialog(
+                                    title: Text('اختر التاريخ'),
+                                    children:
+                                        _dateFilterOptions
+                                            .map(
+                                              (opt) => SimpleDialogOption(
+                                                child: Text(opt),
+                                                onPressed:
+                                                    () => Navigator.pop(
+                                                      context,
+                                                      opt,
+                                                    ),
+                                              ),
+                                            )
+                                            .toList(),
+                                  ),
+                            );
+                            if (result != null) {
+                              setState(() {
+                                _onDateFilterChanged(result);
+                                _applyFilters();
+                              });
+                            }
+                          },
+                          selectedColor: Colors.purple[100],
                         ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'الحالة',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.grey[700],
+                        if (_hasActiveFilters)
+                          ActionChip(
+                            label: Text(
+                              'مسح الكل',
+                              style: TextStyle(color: Colors.red),
                             ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'المدفوعات',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.grey[700],
+                            avatar: Icon(
+                              Icons.clear_all_rounded,
+                              color: Colors.red,
                             ),
+                            backgroundColor: Colors.red[50],
+                            onPressed: _clearAllFilters,
                           ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'المبلغ',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'الإجراءات',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
                       ],
                     ),
                   ),
-
-                  // محتوى الجدول مع مؤشر التحميل
-                  Expanded(
-                    child:
-                        _isLoading
-                            ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  CircularProgressIndicator(
-                                    strokeWidth: 3,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.blue[600]!,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'جاري تحميل الأجهزة...',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey[600],
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                            : _errorMessage.isNotEmpty
-                            ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.error_outline,
-                                    size: 48,
-                                    color: Colors.red[400],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _errorMessage,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.red[600],
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  ElevatedButton.icon(
-                                    onPressed: _loadDevices,
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text('إعادة المحاولة'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.blue[600],
-                                      foregroundColor: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                            : _filteredDevices.isEmpty
-                            ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.devices_other,
-                                    size: 48,
-                                    color: Colors.grey[400],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'لا توجد أجهزة',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      color: Colors.grey[600],
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'قم بإضافة أول جهاز للبدء',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[500],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                            : ListView.builder(
-                              itemCount: _filteredDevices.length,
-                              itemBuilder: (context, index) {
-                                final device = _filteredDevices[index];
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: Colors.grey[100]!,
-                                        width: 1,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      // معلومات الجهاز
-                                      Expanded(
-                                        flex: 2,
-                                        child: Row(
-                                          children: [
-                                            // أيقونة الجهاز
-                                            Container(
-                                              width: 36,
-                                              height: 36,
-                                              decoration: BoxDecoration(
-                                                color: Colors.blue[50],
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                              ),
-                                              child: Icon(
-                                                Icons.phone_android,
-                                                color: Colors.blue[600],
-                                                size: 18,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            // معلومات الجهاز
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    device.deviceId,
-                                                    style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      fontSize: 12,
-                                                    ),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    '${device.brand} ${device.model}',
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      color: Colors.grey[600],
-                                                    ),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // معلومات النتائج مع زر التحديث
+          const SizedBox(height: 16),
+          // جدول عرض الأجهزة الجديد
+          Expanded(
+            child:
+                _isLoading
+                    ? Center(child: CircularProgressIndicator())
+                    : _errorMessage.isNotEmpty
+                    ? Center(
+                      child: Text(
+                        _errorMessage,
+                        style: TextStyle(color: Colors.red, fontSize: 16),
+                      ),
+                    )
+                    : _filteredDevices.isEmpty
+                    ? Center(
+                      child: Text(
+                        'لا توجد أجهزة',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    )
+                    : LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.vertical,
+                          child: SizedBox(
+                            width: constraints.maxWidth,
+                            child: DataTable(
+                              columnSpacing: 24,
+                              headingRowHeight: 48,
+                              dataRowHeight: 56,
+                              columns: const [
+                                DataColumn(label: Text('ID')),
+                                DataColumn(label: Text('الماركة')),
+                                DataColumn(label: Text('الموديل')),
+                                DataColumn(label: Text('العميل')),
+                                DataColumn(label: Text('الحالة')),
+                                DataColumn(label: Text('المبلغ')),
+                                DataColumn(label: Text('إجراءات')),
+                              ],
+                              rows:
+                                  _filteredDevices.map((device) {
+                                    return DataRow(
+                                      cells: [
+                                        DataCell(Text(device.deviceId)),
+                                        DataCell(Text(device.brand)),
+                                        DataCell(Text(device.model)),
+                                        DataCell(Text(device.clientName)),
+                                        DataCell(Text(device.status)),
+                                        DataCell(
+                                          Text('${device.totalAmount} ج.م'),
                                         ),
-                                      ),
-
-                                      // السيريال
-                                      Expanded(
-                                        flex: 2,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.purple[50],
-                                            borderRadius: BorderRadius.circular(
-                                              6,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.purple[200]!,
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            device.serialNumber.isNotEmpty
-                                                ? device.serialNumber
-                                                : 'غير محدد',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w500,
-                                              color:
-                                                  device.serialNumber.isNotEmpty
-                                                      ? Colors.purple[700]
-                                                      : Colors.grey[500],
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ),
-
-                                      // معلومات العميل
-                                      Expanded(
-                                        flex: 2,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              device.clientName,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w500,
-                                                fontSize: 12,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              device.clientPhone1,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.grey[600],
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-
-                                      // نوع العطل
-                                      Expanded(
-                                        flex: 2,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey[100],
-                                            borderRadius: BorderRadius.circular(
-                                              6,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            device.faultType,
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w500,
-                                              color: Colors.grey[700],
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ),
-
-                                      // حالة الجهاز
-                                      Expanded(
-                                        flex: 2,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _getStatusColor(
-                                              device.status,
-                                            ).withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(
-                                              20,
-                                            ),
-                                            border: Border.all(
-                                              color: _getStatusColor(
-                                                device.status,
-                                              ).withOpacity(0.3),
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                width: 6,
-                                                height: 6,
-                                                decoration: BoxDecoration(
-                                                  color: _getStatusColor(
-                                                    device.status,
-                                                  ),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Flexible(
-                                                child: Text(
-                                                  device.status,
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w500,
-                                                    color: _getStatusColor(
-                                                      device.status,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: FutureBuilder<double>(
-                                          future:
-                                              device.id != null
-                                                  ? DatabaseService.getDeviceTotalPaid(
-                                                    device.id!,
-                                                  )
-                                                  : Future.value(0.0),
-                                          builder: (context, snapshot) {
-                                            final totalPaid =
-                                                snapshot.data ?? 0.0;
-                                            final remaining =
-                                                device.totalAmount - totalPaid;
-                                            final isFullyPaid = remaining <= 0;
-
-                                            return Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 4,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color:
-                                                    isFullyPaid
-                                                        ? Colors.green[100]
-                                                        : Colors.red[100],
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    isFullyPaid
-                                                        ? 'مسدد بالكامل'
-                                                        : 'متبقي دفع',
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color:
-                                                          isFullyPaid
-                                                              ? Colors
-                                                                  .green[700]
-                                                              : Colors.red[700],
-                                                    ),
-                                                  ),
-                                                  if (!isFullyPaid)
-                                                    Text(
-                                                      '${remaining.toStringAsFixed(2)} ج.م',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: Colors.red[600],
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 1,
-                                        child: Text(
-                                          '${device.totalAmount} ج.م',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 1,
-                                        child: SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
+                                        DataCell(
+                                          Row(
                                             children: _buildActionButtons(
                                               device,
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                                      ],
+                                    );
+                                  }).toList(),
                             ),
-                  ),
-                ],
-              ),
-            ),
+                          ),
+                        );
+                      },
+                    ),
           ),
         ],
       ),

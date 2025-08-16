@@ -166,7 +166,7 @@ class Sidebar extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'أحمد محمد',
+                        'احمد الشريف',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,

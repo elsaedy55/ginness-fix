@@ -110,7 +110,7 @@ class _EmployeesManagementState extends State<EmployeesManagement> {
               itemBuilder: (context, index) {
                 final employees = [
                   {
-                    'name': 'أحمد محمد السعدي',
+                    'name': 'أحمد الشريف',
                     'position': 'مدير قسم الهواتف',
                     'department': 'قسم الهواتف المحمولة',
                     'phone': '0599123456',

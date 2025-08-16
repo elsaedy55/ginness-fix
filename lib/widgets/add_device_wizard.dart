@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../models/device.dart';
 import '../services/database_service.dart';
 
@@ -14,9 +15,13 @@ class AddDeviceWizard extends StatefulWidget {
 
 class _AddDeviceWizardState extends State<AddDeviceWizard> {
   final _formKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _clientFormKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _deviceFormKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _problemFormKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _financialFormKey = GlobalKey<FormState>();
   final _pageController = PageController();
   int _currentPage = 0;
-  final bool _isLoading = false;
+  bool _isLoading = false;
 
   // Controllers
   final TextEditingController _clientNameController = TextEditingController();
@@ -24,6 +29,7 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
   final TextEditingController _clientPhone2Controller = TextEditingController();
   final TextEditingController _serialNumberController = TextEditingController();
   final TextEditingController _brandSearchController = TextEditingController();
+  final TextEditingController _modelController = TextEditingController();
   final TextEditingController _problemController = TextEditingController();
   final TextEditingController _costController = TextEditingController();
   final TextEditingController _accessoriesController = TextEditingController();
@@ -56,8 +62,6 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
     'تابلت',
     'ساعة ذكية',
     'سماعات',
-    'كمبيوتر',
-    'جهاز ألعاب',
   ];
 
   final Map<String, List<String>> _brandsByCategory = {
@@ -67,12 +71,11 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
       'Xiaomi',
       'Huawei',
       'OnePlus',
-      'Google (Pixel)',
+      'Google',
       'Oppo',
       'Vivo',
       'Honor',
       'Realme',
-      'Nothing',
       'Motorola',
     ],
     'لاب توب': [
@@ -148,36 +151,6 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
       'Grado',
       'Philips',
       'Skullcandy',
-    ],
-    'كمبيوتر': [
-      'Dell',
-      'HP',
-      'Lenovo',
-      'Asus',
-      'MSI',
-      'Alienware',
-      'Apple',
-      'Acer',
-      'Origin PC',
-      'Corsair',
-      'NZXT',
-      'CyberPowerPC',
-      'iBUYPOWER',
-      'Maingear',
-      'Digital Storm',
-      'Falcon Northwest',
-      'System76',
-      'Puget Systems',
-    ],
-    'جهاز ألعاب': [
-      'Sony PlayStation',
-      'Microsoft Xbox',
-      'Nintendo',
-      'Steam Deck',
-      'Asus ROG Ally',
-      'Logitech G Cloud',
-      'Razer Edge',
-      'AYN Odin',
     ],
   };
 
@@ -528,28 +501,21 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
     'تابلت': ['iPadOS', 'Android', 'Windows 11'],
     'ساعة ذكية': ['watchOS', 'Wear OS', 'HarmonyOS'],
     'سماعات': ['لا يوجد'],
-    'كمبيوتر': ['Windows 11', 'Windows 10', 'macOS', 'Linux'],
-    'جهاز ألعاب': ['PlayStation OS', 'Xbox OS', 'Nintendo OS', 'Steam OS'],
   };
 
   final List<String> _faultTypes = [
-    'سوفت وير',
-    'هاردوير',
-    'شاشة',
-    'بطارية',
-    'شحن',
-    'مياه',
-    'شبكة',
-    'صوت',
-    'كاميرا',
-    'أخرى',
+    'سوفتوير',
+    'Jetag',
+    'هاردوير ايفون',
+    'هاردوير اندرويد',
+    'باغه / شاشه',
   ];
 
   final List<String> _statuses = [
     'في الانتظار',
     'قيد الإصلاح',
     'مكتمل',
-    'ملغي',
+    'مرفوض',
   ];
 
   List<String> get _filteredBrands {
@@ -712,11 +678,12 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
       _clientNameController.text = widget.prefilledDevice!.clientName;
       _clientPhone1Controller.text = widget.prefilledDevice!.clientPhone1;
       _clientPhone2Controller.text = widget.prefilledDevice!.clientPhone2;
-      _serialNumberController.text = widget.prefilledDevice!.serialNumber;
+      _serialNumberController.text = widget.prefilledDevice!.serialNumber ?? '';
       _selectedGender = widget.prefilledDevice!.gender;
       _selectedDeviceCategory = widget.prefilledDevice!.deviceCategory;
       _selectedBrand = widget.prefilledDevice!.brand;
       _selectedModel = widget.prefilledDevice!.model;
+      _modelController.text = widget.prefilledDevice!.model;
       _selectedOS = widget.prefilledDevice!.operatingSystem;
 
       // إعادة تعيين الحالة والعطل للعطل الجديد
@@ -727,9 +694,9 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
       _advanceAmountController.clear();
       _remainingAmountController.clear();
     } else {
-      // إنشاء رقم جهاز فريد للجهاز الجديد
-      _deviceId = 'GF-1-Loading...'; // رقم مؤقت
-      _generateUniqueDeviceId();
+      // استخدم عداد محفوظ لبدء ترقيم الأجهزة (GF-XXXX)
+      _deviceId = 'GF-Loading...'; // رقم مؤقت
+      _generateUniqueDeviceIdFromCounter();
     }
 
     // ربط المستمعين لحساب المبلغ المتبقي
@@ -739,10 +706,15 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
 
   @override
   void dispose() {
+    // remove listeners to avoid callbacks after dispose
+    _totalAmountController.removeListener(_calculateRemaining);
+    _advanceAmountController.removeListener(_calculateRemaining);
+
     _clientNameController.dispose();
     _clientPhone1Controller.dispose();
     _clientPhone2Controller.dispose();
     _brandSearchController.dispose();
+    _modelController.dispose();
     _problemController.dispose();
     _costController.dispose();
     _accessoriesController.dispose();
@@ -795,6 +767,7 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
     setState(() {
       _selectedBrand = brand ?? '';
       _selectedModel = '';
+      _modelController.clear();
       _showBrandList = false; // إغلاق القائمة بعد الاختيار
       _brandSearchController.text =
           brand ?? ''; // عرض الماركة المختارة في صندوق البحث
@@ -823,6 +796,94 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
     });
   }
 
+  bool _validateCurrentPage() {
+    switch (_currentPage) {
+      case 0:
+        return _clientFormKey.currentState?.validate() ?? false;
+      case 1:
+        return _deviceFormKey.currentState?.validate() ?? false;
+      case 2:
+        return _problemFormKey.currentState?.validate() ?? false;
+      case 3:
+        return _financialFormKey.currentState?.validate() ?? false;
+      default:
+        return false;
+    }
+  }
+
+  /// Validate all pages and jump to the first invalid page if any.
+  bool _validateAllPages({bool jumpToInvalid = true}) {
+    // Run validators on each form and capture results
+    final clientValid = _clientFormKey.currentState?.validate() ?? false;
+    final deviceValid = _deviceFormKey.currentState?.validate() ?? false;
+    final problemValid = _problemFormKey.currentState?.validate() ?? false;
+    final financialValid = _financialFormKey.currentState?.validate() ?? false;
+
+    // If any page invalid, navigate to the first one that failed so the user can fix it
+    if (!clientValid) {
+      if (jumpToInvalid) {
+        _pageController.jumpToPage(0);
+        setState(() => _currentPage = 0);
+      }
+      return false;
+    }
+    if (!deviceValid) {
+      if (jumpToInvalid) {
+        _pageController.jumpToPage(1);
+        setState(() => _currentPage = 1);
+      }
+      return false;
+    }
+    if (!problemValid) {
+      if (jumpToInvalid) {
+        _pageController.jumpToPage(2);
+        setState(() => _currentPage = 2);
+      }
+      return false;
+    }
+    if (!financialValid) {
+      if (jumpToInvalid) {
+        _pageController.jumpToPage(3);
+        setState(() => _currentPage = 3);
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  /// Validate only the required pages for saving (client, device, problem).
+  /// Financial page is optional for quick saves.
+  bool _validateRequiredForSave({bool jumpToInvalid = true}) {
+    final clientValid = _clientFormKey.currentState?.validate() ?? false;
+    final deviceValid = _deviceFormKey.currentState?.validate() ?? false;
+    final problemValid = _problemFormKey.currentState?.validate() ?? false;
+
+    if (!clientValid) {
+      if (jumpToInvalid) {
+        _pageController.jumpToPage(0);
+        setState(() => _currentPage = 0);
+      }
+      return false;
+    }
+    if (!deviceValid) {
+      if (jumpToInvalid) {
+        _pageController.jumpToPage(1);
+        setState(() => _currentPage = 1);
+      }
+      return false;
+    }
+    if (!problemValid) {
+      if (jumpToInvalid) {
+        _pageController.jumpToPage(2);
+        setState(() => _currentPage = 2);
+      }
+      return false;
+    }
+
+    return true;
+  }
+
   void _calculateRemaining() {
     final total = double.tryParse(_totalAmountController.text) ?? 0.0;
     final advance = double.tryParse(_advanceAmountController.text) ?? 0.0;
@@ -834,108 +895,157 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
   }
 
   // توليد رقم جهاز فريد
-  Future<void> _generateUniqueDeviceId() async {
-    int attempts = 0;
-    const int maxAttempts = 10;
+  /// توليد رقم جهاز باستخدام العداد المحفوظ في قاعدة البيانات.
+  /// الشكل: GF-<counter> مع عدم وجود بادئات إضافية. سيتم زيادة العداد
+  /// بعد نجاح عملية الإضافة.
+  Future<void> _generateUniqueDeviceIdFromCounter() async {
+    try {
+      final counter = await DatabaseService.getDeviceStartCounter();
+      final prefix = await DatabaseService.getDevicePrefix();
 
-    while (attempts < maxAttempts) {
-      // إنشاء رقم جهاز بناءً على التوقيت والرقم العشوائي
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final random = timestamp % 99999; // آخر 5 أرقام
-      final deviceId = 'GF-1-$random';
+      // Normalize prefix: ensure it doesn't end with a dash if user included one
+      String p = prefix;
+      if (p.endsWith('-')) p = p.substring(0, p.length - 1);
 
-      try {
-        // فحص إذا كان الرقم موجود مسبقاً
-        final existingDevices = await DatabaseService.searchDevices(deviceId);
-        if (existingDevices.isEmpty) {
+      // حاول العثور على أول قيمة غير مستخدمة ابتداءً من العداد
+      final base = counter + 1;
+      for (int i = 0; i < 1000; i++) {
+        final candidate = base + i;
+        final deviceId = '$p-$candidate';
+
+        final existing = await DatabaseService.searchDevices(deviceId);
+        if (existing.isEmpty) {
+          if (!mounted) return;
           setState(() {
             _deviceId = deviceId;
           });
           return;
         }
-        attempts++;
+      }
 
-        // انتظار قصير قبل المحاولة التالية
-        await Future.delayed(Duration(milliseconds: 10));
-      } catch (e) {
-        // في حالة خطأ في البحث، استخدم رقم عشوائي
-        final fallbackId =
-            'GF-1-${DateTime.now().millisecondsSinceEpoch % 99999}';
+      // إذا فشلت (نادر)، استخدم طابع زمني كما fallback
+      if (mounted) {
         setState(() {
-          _deviceId = fallbackId;
+          _deviceId = '$p-${DateTime.now().millisecondsSinceEpoch}';
         });
-        return;
+      }
+    } catch (e) {
+      // في حال فشل الحصول من DB، اعتمد fallback عادي
+      if (mounted) {
+        setState(() {
+          _deviceId = 'GF-${DateTime.now().millisecondsSinceEpoch}';
+        });
       }
     }
-
-    // إذا فشلت كل المحاولات، استخدم رقم بالتوقيت الكامل
-    setState(() {
-      _deviceId = 'GF-1-${DateTime.now().millisecondsSinceEpoch}';
-    });
   }
 
   void _saveDevice() async {
-    if (_formKey.currentState!.validate()) {
-      try {
-        // إنشاء كائن الجهاز
-        final device = Device(
-          deviceId: _deviceId,
-          clientName: _clientNameController.text.trim(),
-          clientPhone1: _clientPhone1Controller.text.trim(),
-          clientPhone2: _clientPhone2Controller.text.trim(),
-          gender: _selectedGender,
-          deviceCategory: _selectedDeviceCategory,
-          brand: _selectedBrand,
-          model: _selectedModel,
-          operatingSystem: _selectedOS,
-          faultType: _selectedFaultType,
-          faultDescription: _problemController.text.trim(),
-          status: _selectedStatus,
-          totalAmount: double.tryParse(_totalAmountController.text) ?? 0.0,
-          advanceAmount: double.tryParse(_advanceAmountController.text) ?? 0.0,
-          remainingAmount:
-              double.tryParse(_remainingAmountController.text) ?? 0.0,
-          spareParts: _materialsController.text.trim(),
-          createdAt: DateTime.now(),
-          serialNumber: _serialNumberController.text.trim(),
-        );
-
-        // حفظ الجهاز في قاعدة البيانات
-        await DatabaseService.addDevice(device);
-
-        // إظهار رسالة نجاح
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.prefilledDevice != null
-                  ? 'تم إضافة العطل الجديد بنجاح! رقم الجهاز: $_deviceId'
-                  : 'تم إضافة الجهاز بنجاح! رقم الجهاز: $_deviceId',
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'نسخ الكود',
-              textColor: Colors.white,
-              onPressed: () {
-                // TODO: Copy device ID to clipboard
-              },
-            ),
+    // Validate required pages for save but do NOT jump to the invalid page.
+    // We still want to show validation errors (red borders), but allow saving.
+    final bool requiredValid = _validateRequiredForSave(jumpToInvalid: false);
+    // Rebuild so validation errors show where they are.
+    setState(() {});
+    if (!requiredValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'بعض الحقول مطلوبة فارغة، سيتم المحاولة بالحفظ على أي حال',
           ),
-        );
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      // continue to save even if some required validators failed (caller requested)
+    }
 
-        Navigator.of(context).pop();
+    setState(() {
+      _isLoading = true;
+    });
 
-        // استدعاء callback لتحديث القائمة
-        if (widget.onDeviceAdded != null) {
-          widget.onDeviceAdded!();
+    try {
+      // إنشاء كائن الجهاز
+      final device = Device(
+        deviceId: _deviceId,
+        clientName: _clientNameController.text.trim(),
+        clientPhone1: _clientPhone1Controller.text.trim(),
+        clientPhone2: _clientPhone2Controller.text.trim(),
+        gender: _selectedGender,
+        deviceCategory: _selectedDeviceCategory,
+        brand: _selectedBrand,
+        model: _modelController.text.trim(),
+        operatingSystem: _selectedOS,
+        faultType: _selectedFaultType,
+        faultDescription: _problemController.text.trim(),
+        status: _selectedStatus,
+        totalAmount: double.tryParse(_totalAmountController.text) ?? 0.0,
+        advanceAmount: double.tryParse(_advanceAmountController.text) ?? 0.0,
+        remainingAmount:
+            double.tryParse(_remainingAmountController.text) ?? 0.0,
+        spareParts: _materialsController.text.trim(),
+        createdAt: DateTime.now(),
+        serialNumber:
+            _serialNumberController.text.trim().isEmpty
+                ? null
+                : _serialNumberController.text.trim(),
+      );
+
+      // حفظ الجهاز في قاعدة البيانات
+      await DatabaseService.addDevice(device);
+
+      // بعد الإضافة الناجحة، زد العداد المحفوظ (إذا كان موجوداً)
+      try {
+        final current = await DatabaseService.getDeviceStartCounter();
+        // إذا كان _deviceId من الشكل GF-<num> نحاول استخراج الرقم
+        final parts = _deviceId.split('-');
+        if (parts.length >= 2) {
+          final numPart = int.tryParse(parts.last);
+          if (numPart != null && numPart >= current) {
+            // Store the last-used number. The generator will use stored+1 next time.
+            await DatabaseService.setDeviceStartCounter(numPart);
+          }
         }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في إضافة الجهاز: $e'),
-            backgroundColor: Colors.red,
+        if (kDebugMode) debugPrint('Failed to bump device counter: $e');
+      }
+
+      // إظهار رسالة نجاح
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.prefilledDevice != null
+                ? 'تم إضافة العطل الجديد بنجاح! رقم الجهاز: $_deviceId'
+                : 'تم إضافة الجهاز بنجاح! رقم الجهاز: $_deviceId',
           ),
-        );
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'نسخ الكود',
+            textColor: Colors.white,
+            onPressed: () {
+              // TODO: Copy device ID to clipboard
+            },
+          ),
+        ),
+      );
+
+      Navigator.of(context).pop();
+
+      // استدعاء callback لتحديث القائمة
+      if (widget.onDeviceAdded != null) {
+        widget.onDeviceAdded!();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في إضافة الجهاز: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -1061,11 +1171,12 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
                 children: [
                   Row(
                     children: [
+                      // show 4 progress segments: Client, Device, Problem, Financial
                       for (int i = 0; i < 4; i++)
                         Expanded(
                           child: Container(
                             height: 6,
-                            margin: EdgeInsets.only(right: i < 3 ? 8 : 0),
+                            margin: EdgeInsets.only(right: i < 4 - 1 ? 8 : 0),
                             decoration: BoxDecoration(
                               color:
                                   i <= _currentPage
@@ -1094,19 +1205,18 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Form(
-                  key: _formKey,
-                  child: PageView(
-                    controller: _pageController,
-                    onPageChanged:
-                        (page) => setState(() => _currentPage = page),
-                    children: [
-                      _buildClientInfoPage(),
-                      _buildDeviceInfoPage(),
-                      _buildProblemInfoPage(),
-                      _buildFinancialInfoPage(),
-                    ],
-                  ),
+                child: PageView(
+                  controller: _pageController,
+                  onPageChanged: (page) => setState(() => _currentPage = page),
+                  children: [
+                    Form(key: _clientFormKey, child: _buildClientInfoPage()),
+                    Form(key: _deviceFormKey, child: _buildDeviceInfoPage()),
+                    Form(key: _problemFormKey, child: _buildProblemInfoPage()),
+                    Form(
+                      key: _financialFormKey,
+                      child: _buildFinancialInfoPage(),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1144,7 +1254,24 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
 
                   if (_currentPage < 3)
                     ElevatedButton.icon(
-                      onPressed: _nextPage,
+                      onPressed: () {
+                        if (_validateCurrentPage()) {
+                          _nextPage();
+                        } else {
+                          // trigger rebuild so error borders/messages show
+                          setState(() {});
+                          // show explicit error to the user
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                'بعض الحقول المطلوبة فارغة أو غير صحيحة، الرجاء تعبئتها قبل المتابعة.',
+                              ),
+                              backgroundColor: Colors.red.shade700,
+                              duration: const Duration(seconds: 3),
+                            ),
+                          );
+                        }
+                      },
                       icon: const Icon(Icons.arrow_forward),
                       label: const Text('التالي'),
                       style: ElevatedButton.styleFrom(
@@ -1212,342 +1339,335 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
 
   Widget _buildClientInfoPage() {
     return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).primaryColor.withOpacity(0.1),
-                  Theme.of(context).primaryColor.withOpacity(0.05),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.person_add,
-                  size: 32,
-                  color: Theme.of(context).primaryColor,
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'معلومات العميل',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      'أدخل البيانات الشخصية للعميل',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          _buildCustomTextField(
-            controller: _clientNameController,
-            label: 'الاسم الكامل',
-            icon: Icons.person,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'يرجى إدخال الاسم الكامل';
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 20),
-
-          Row(
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 2),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _buildCustomDropdown<String>(
-                  value: _selectedGender.isEmpty ? null : _selectedGender,
-                  label: 'النوع',
-                  icon: Icons.person_outline,
-                  items: _genders,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedGender = value ?? '';
-                    });
-                  },
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'يرجى اختيار النوع';
-                    }
-                    return null;
-                  },
-                ),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Theme.of(
+                      context,
+                    ).primaryColor.withOpacity(0.12),
+                    child: Icon(
+                      Icons.person_add,
+                      color: Theme.of(context).primaryColor,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'معلومات العميل',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      Text(
+                        'أدخل بيانات العميل بشكل مبسط',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildCustomTextField(
+                      controller: _clientNameController,
+                      label: 'الاسم الكامل *',
+                      icon: Icons.person,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'يرجى إدخال الاسم الكامل';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildCustomDropdown<String>(
+                      value: _selectedGender.isEmpty ? null : _selectedGender,
+                      label: 'النوع *',
+                      icon: Icons.person_outline,
+                      items: _genders,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedGender = value ?? '';
+                        });
+                      },
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'يرجى اختيار النوع';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildCustomTextField(
+                      controller: _clientPhone1Controller,
+                      label: 'رقم الهاتف الأول *',
+                      icon: Icons.phone,
+                      keyboardType: TextInputType.phone,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'يرجى إدخال رقم الهاتف الأول';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildCustomTextField(
+                      controller: _clientPhone2Controller,
+                      label: 'رقم الهاتف الثاني (اختياري)',
+                      icon: Icons.phone_android,
+                      keyboardType: TextInputType.phone,
+                      isRequired: false,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-
-          const SizedBox(height: 20),
-
-          _buildCustomTextField(
-            controller: _clientPhone1Controller,
-            label: 'رقم الهاتف الأول',
-            icon: Icons.phone,
-            keyboardType: TextInputType.phone,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'يرجى إدخال رقم الهاتف الأول';
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 20),
-
-          _buildCustomTextField(
-            controller: _clientPhone2Controller,
-            label: 'رقم الهاتف الثاني (اختياري)',
-            icon: Icons.phone_android,
-            keyboardType: TextInputType.phone,
-            isRequired: false,
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildDeviceInfoPage() {
     return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.blue.withOpacity(0.1),
-                  Colors.blue.withOpacity(0.05),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.devices, size: 32, color: Colors.blue[700]),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'معلومات الجهاز',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 2),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.blue.withOpacity(0.12),
+                    child: Icon(
+                      Icons.devices,
+                      color: Colors.blue[700],
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'معلومات الجهاز',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
                       ),
+                      Text(
+                        'حدد تفاصيل الجهاز والمواصفات',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // First row: نوع الجهاز + الرقم التسلسلي
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value:
+                          _selectedDeviceCategory.isEmpty
+                              ? null
+                              : _selectedDeviceCategory,
+                      decoration: const InputDecoration(
+                        labelText: 'نوع الجهاز *',
+                        prefixIcon: Icon(Icons.devices),
+                        border: OutlineInputBorder(),
+                      ),
+                      items:
+                          _deviceCategories.map((category) {
+                            return DropdownMenuItem(
+                              value: category,
+                              child: Text(category),
+                            );
+                          }).toList(),
+                      onChanged: _onDeviceCategoryChanged,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'يرجى اختيار نوع الجهاز';
+                        }
+                        return null;
+                      },
                     ),
-                    Text(
-                      'حدد تفاصيل الجهاز والمواصفات',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildCustomTextField(
+                      controller: _serialNumberController,
+                      label: 'الرقم التسلسلي',
+                      icon: Icons.qr_code,
+                      // serial number is optional now
+                      validator: null,
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Second row: ماركة الجهاز + الموديل
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _brandSearchController,
+                      decoration: InputDecoration(
+                        labelText:
+                            _selectedBrand.isEmpty
+                                ? 'ابحث عن الماركة'
+                                : 'الماركة المختارة: $_selectedBrand',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon:
+                            _selectedBrand.isNotEmpty
+                                ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    setState(() {
+                                      _selectedBrand = '';
+                                      _selectedModel = '';
+                                      _modelController.clear();
+                                      _selectedOS = '';
+                                      _brandSearchController.clear();
+                                      _showBrandList = false;
+                                    });
+                                  },
+                                )
+                                : null,
+                        border: const OutlineInputBorder(),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _showBrandList = !_showBrandList;
+                        });
+                      },
+                      onChanged: (value) {
+                        setState(() {
+                          _showBrandList = value.isNotEmpty;
+                        });
+                      },
+                      validator: (value) {
+                        // Brand is considered required when device category is selected
+                        if (_selectedDeviceCategory.isNotEmpty) {
+                          final hasBrand =
+                              (_selectedBrand.isNotEmpty) ||
+                              (value != null && value.trim().isNotEmpty);
+                          if (!hasBrand) return 'يرجى اختيار أو إدخال الماركة';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildCustomTextField(
+                      controller: _modelController,
+                      label: 'الموديل *',
+                      icon: Icons.phone_android,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'يرجى إدخال الموديل';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              // Brand list dropdown (always visible below brand field)
+              if (_showBrandList && _filteredBrands.isNotEmpty)
+                Container(
+                  height: 120,
+                  margin: const EdgeInsets.only(top: 8),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(4),
+                    color: Colors.white,
+                  ),
+                  child: ListView.builder(
+                    itemCount: _filteredBrands.length,
+                    itemBuilder: (context, index) {
+                      final brand = _filteredBrands[index];
+                      final isSelected = brand == _selectedBrand;
+                      return ListTile(
+                        title: Text(brand),
+                        selected: isSelected,
+                        selectedTileColor: Theme.of(
+                          context,
+                        ).primaryColor.withOpacity(0.1),
+                        leading:
+                            isSelected
+                                ? Icon(
+                                  Icons.check,
+                                  color: Theme.of(context).primaryColor,
+                                )
+                                : null,
+                        onTap: () => _onBrandChanged(brand),
+                      );
+                    },
+                  ),
                 ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // نوع الجهاز
-          DropdownButtonFormField<String>(
-            value:
-                _selectedDeviceCategory.isEmpty
-                    ? null
-                    : _selectedDeviceCategory,
-            decoration: const InputDecoration(
-              labelText: 'نوع الجهاز',
-              prefixIcon: Icon(Icons.devices),
-              border: OutlineInputBorder(),
-            ),
-            items:
-                _deviceCategories.map((category) {
-                  return DropdownMenuItem(
-                    value: category,
-                    child: Text(category),
-                  );
-                }).toList(),
-            onChanged: _onDeviceCategoryChanged,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'يرجى اختيار نوع الجهاز';
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 16),
-
-          // حقل Serial Number
-          _buildCustomTextField(
-            controller: _serialNumberController,
-            label: 'الرقم التسلسلي (Serial Number)',
-            icon: Icons.qr_code,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'يرجى إدخال الرقم التسلسلي للجهاز';
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 16),
-
-          // ماركة الجهاز مع البحث
-          if (_selectedDeviceCategory.isNotEmpty) ...[
-            TextField(
-              controller: _brandSearchController,
-              decoration: InputDecoration(
-                labelText:
-                    _selectedBrand.isEmpty
-                        ? 'ابحث عن الماركة'
-                        : 'الماركة المختارة: $_selectedBrand',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _selectedBrand.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            setState(() {
-                              _selectedBrand = '';
-                              _selectedModel = '';
-                              _selectedOS = '';
-                              _brandSearchController.clear();
-                              _showBrandList = false;
-                            });
-                          },
-                        )
-                        : null,
-                border: const OutlineInputBorder(),
-              ),
-              onTap: () {
-                setState(() {
-                  _showBrandList = !_showBrandList;
-                });
-              },
-              onChanged: (value) {
-                setState(() {
-                  _showBrandList = value.isNotEmpty;
-                });
-              },
-            ),
-
-            const SizedBox(height: 8),
-
-            if (_showBrandList && _filteredBrands.isNotEmpty)
-              Container(
-                height: 120,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey[300]!),
-                  borderRadius: BorderRadius.circular(4),
-                  color: Colors.white,
+              const SizedBox(height: 16),
+              // Third row: نظام التشغيل
+              DropdownButtonFormField<String>(
+                value: _selectedOS.isEmpty ? null : _selectedOS,
+                decoration: const InputDecoration(
+                  labelText: 'نظام التشغيل *',
+                  prefixIcon: Icon(Icons.memory),
+                  border: OutlineInputBorder(),
                 ),
-                child: ListView.builder(
-                  itemCount: _filteredBrands.length,
-                  itemBuilder: (context, index) {
-                    final brand = _filteredBrands[index];
-                    final isSelected = brand == _selectedBrand;
-
-                    return ListTile(
-                      title: Text(brand),
-                      selected: isSelected,
-                      selectedTileColor: Theme.of(
-                        context,
-                      ).primaryColor.withOpacity(0.1),
-                      leading:
-                          isSelected
-                              ? Icon(
-                                Icons.check,
-                                color: Theme.of(context).primaryColor,
-                              )
-                              : null,
-                      onTap: () => _onBrandChanged(brand),
-                    );
-                  },
-                ),
+                items:
+                    _availableOS.map((os) {
+                      return DropdownMenuItem(value: os, child: Text(os));
+                    }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedOS = value ?? '';
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'يرجى اختيار نظام التشغيل';
+                  }
+                  return null;
+                },
               ),
-
-            const SizedBox(height: 16),
-          ],
-
-          // الموديل
-          if (_selectedBrand.isNotEmpty) ...[
-            DropdownButtonFormField<String>(
-              value: _selectedModel.isEmpty ? null : _selectedModel,
-              decoration: const InputDecoration(
-                labelText: 'الموديل',
-                prefixIcon: Icon(Icons.phone_android),
-                border: OutlineInputBorder(),
-              ),
-              items:
-                  _availableModels.map((model) {
-                    return DropdownMenuItem(value: model, child: Text(model));
-                  }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedModel = value ?? '';
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'يرجى اختيار الموديل';
-                }
-                return null;
-              },
-            ),
-
-            const SizedBox(height: 16),
-          ],
-
-          // نظام التشغيل
-          if (_selectedDeviceCategory.isNotEmpty) ...[
-            DropdownButtonFormField<String>(
-              value: _selectedOS.isEmpty ? null : _selectedOS,
-              decoration: const InputDecoration(
-                labelText: 'نظام التشغيل',
-                prefixIcon: Icon(Icons.memory),
-                border: OutlineInputBorder(),
-              ),
-              items:
-                  _availableOS.map((os) {
-                    return DropdownMenuItem(value: os, child: Text(os));
-                  }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedOS = value ?? '';
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'يرجى اختيار نظام التشغيل';
-                }
-                return null;
-              },
-            ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1597,46 +1717,60 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
 
           const SizedBox(height: 24),
 
-          DropdownButtonFormField<String>(
-            value: _selectedFaultType.isEmpty ? null : _selectedFaultType,
-            decoration: const InputDecoration(
-              labelText: 'نوع العطل',
-              prefixIcon: Icon(Icons.build),
-              border: OutlineInputBorder(),
+          // rebuilt: fault type and problem description side-by-side with equal height
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 1,
+                  child: Container(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: _buildCustomDropdown<String>(
+                      value:
+                          _selectedFaultType.isEmpty
+                              ? null
+                              : _selectedFaultType,
+                      label: 'نوع العطل *',
+                      icon: Icons.build,
+                      items: _faultTypes,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedFaultType = value ?? '';
+                        });
+                      },
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'يرجى اختيار نوع العطل';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: _buildCustomTextField(
+                      controller: _problemController,
+                      label: 'وصف المشكلة *',
+                      icon: Icons.description,
+                      minLines: 2,
+                      maxLines: 2,
+                      textAlignVertical: TextAlignVertical.center,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'يرجى وصف المشكلة';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ),
-            items:
-                _faultTypes.map((type) {
-                  return DropdownMenuItem(value: type, child: Text(type));
-                }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedFaultType = value ?? '';
-              });
-            },
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'يرجى اختيار نوع العطل';
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 16),
-
-          TextFormField(
-            controller: _problemController,
-            decoration: const InputDecoration(
-              labelText: 'وصف المشكلة',
-              prefixIcon: Icon(Icons.description),
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'يرجى وصف المشكلة';
-              }
-              return null;
-            },
           ),
 
           const SizedBox(height: 16),
@@ -1824,7 +1958,9 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
     String? Function(String?)? validator,
     bool isRequired = true,
     int maxLines = 1,
+    int? minLines,
     String? hintText,
+    TextAlignVertical? textAlignVertical,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1841,6 +1977,8 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
         controller: controller,
         keyboardType: keyboardType,
         maxLines: maxLines,
+        minLines: minLines,
+        textAlignVertical: textAlignVertical,
         validator: validator,
         decoration: InputDecoration(
           labelText: label,
@@ -1868,6 +2006,14 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
               color: Theme.of(context).primaryColor,
               width: 2,
             ),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.red.shade700, width: 1.5),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.red.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -1933,6 +2079,14 @@ class _AddDeviceWizardState extends State<AddDeviceWizard> {
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 16,
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.red.shade700, width: 1.5),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.red.shade700, width: 2),
           ),
         ),
         items:

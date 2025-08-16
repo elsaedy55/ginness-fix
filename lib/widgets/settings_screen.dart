@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../services/database_service.dart';
+
+// إدارة إعدادات التطبيق، بما فيها بدء ترقيم الأجهزة (GF-...)
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,6 +19,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   final List<String> _themeOptions = ['فاتح', 'داكن', 'تلقائي'];
   final List<String> _languageOptions = ['العربية', 'English'];
+
+  // جهاز ID counter setting
+  final TextEditingController _deviceStartController = TextEditingController();
+  bool _isLoadingDeviceCounter = true;
+  // جهاز ID prefix setting
+  final TextEditingController _devicePrefixController = TextEditingController();
+  bool _isLoadingDevicePrefix = true;
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +77,151 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _selectedLanguage = value;
                     });
                   }
+                },
+              ),
+            ),
+            // إعداد بدء ترقيم الأجهزة
+            ListTile(
+              title: const Text('بداية ترقيم الأجهزة (GF-)'),
+              subtitle: const Text('أدخل آخر رقم مستخدم؛ التالي سيكون +1'),
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              trailing: SizedBox(
+                width: 360,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _deviceStartController,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.right,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          hintText: 'مثال: 555',
+                          labelText: 'آخر رقم مستخدم',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 38,
+                      child: ElevatedButton(
+                        onPressed:
+                            _isLoadingDeviceCounter ? null : _saveDeviceStart,
+                        child: const Text('حفظ'),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      height: 38,
+                      child: OutlinedButton(
+                        onPressed:
+                            _isLoadingDeviceCounter ? null : _resetDeviceStart,
+                        child: const Text('إعادة'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // إعداد بادئة Device ID (محسّن)
+            ListTile(
+              title: const Text('بادئة رقم الجهاز (مثال: GF-1 أو GF-2)'),
+              subtitle: const Text('النص الذي سيُستخدم كبادئة قبل الرقم'),
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              trailing: SizedBox(
+                width: 360,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _devicePrefixController,
+                        keyboardType: TextInputType.text,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          hintText: 'مثال: GF-1',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 38,
+                      child: ElevatedButton(
+                        onPressed:
+                            _isLoadingDevicePrefix ? null : _saveDevicePrefix,
+                        child: const Text('حفظ'),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      height: 38,
+                      child: OutlinedButton(
+                        onPressed:
+                            _isLoadingDevicePrefix ? null : _resetDevicePrefix,
+                        child: const Text('إعادة'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // معاينة محسّنة لكيف سيبدو الـ ID
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0, left: 12.0, right: 12.0),
+              child: Builder(
+                builder: (ctx) {
+                  final prefix =
+                      _devicePrefixController.text.trim().isEmpty
+                          ? 'GF'
+                          : _devicePrefixController.text.trim();
+                  final last =
+                      _deviceStartController.text.trim().isEmpty
+                          ? '1'
+                          : _deviceStartController.text.trim();
+                  int lastNum = int.tryParse(last) ?? 1;
+                  final nextNum = lastNum + 1;
+                  return Card(
+                    color: Colors.grey[50],
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.remove_red_eye,
+                            size: 18,
+                            color: Colors.grey[700],
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              // ignore: unnecessary_brace_in_string_interps
+                              'المستخدم آخر رقم: $prefix-$lastNum    →    التالي: ${prefix}-$nextNum',
+                              style: TextStyle(color: Colors.grey[800]),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
                 },
               ),
             ),
@@ -187,6 +342,143 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDeviceStartCounter();
+    _loadDevicePrefix();
+
+    // Keep preview live while user types, but use named listeners so we can remove them on dispose
+    _deviceStartController.addListener(_settingsPreviewListener);
+    _devicePrefixController.addListener(_settingsPreviewListener);
+  }
+
+  @override
+  void dispose() {
+    // remove listeners before disposing controllers to avoid callbacks after dispose
+    _deviceStartController.removeListener(_settingsPreviewListener);
+    _devicePrefixController.removeListener(_settingsPreviewListener);
+    _deviceStartController.dispose();
+    _devicePrefixController.dispose();
+    super.dispose();
+  }
+
+  void _settingsPreviewListener() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _loadDeviceStartCounter() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingDeviceCounter = true;
+      });
+    }
+    try {
+      final counter = await DatabaseService.getDeviceStartCounter();
+      _deviceStartController.text = counter.toString();
+    } catch (e) {
+      // ignore, keep default
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingDeviceCounter = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadDevicePrefix() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingDevicePrefix = true;
+      });
+    }
+    try {
+      final prefix = await DatabaseService.getDevicePrefix();
+      _devicePrefixController.text = prefix;
+    } catch (e) {
+      // ignore
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingDevicePrefix = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveDeviceStart() async {
+    final text = _deviceStartController.text.trim();
+    final val = int.tryParse(text);
+    if (val == null || val <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ادخل رقماً صحيحاً أكبر من 0')),
+      );
+      return;
+    }
+
+    try {
+      await DatabaseService.setDeviceStartCounter(val);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم حفظ بداية ترقيم الأجهزة بنجاح')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('فشل الحفظ: $e')));
+    }
+  }
+
+  Future<void> _resetDeviceStart() async {
+    try {
+      await DatabaseService.setDeviceStartCounter(1);
+      _deviceStartController.text = '1';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('تم إعادة العداد إلى 1')));
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('فشل إعادة التعيين: $e')));
+    }
+  }
+
+  Future<void> _saveDevicePrefix() async {
+    final text = _devicePrefixController.text.trim();
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ادخل بادئة صحيحة مثل GF-1')),
+      );
+      return;
+    }
+
+    try {
+      await DatabaseService.setDevicePrefix(text);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('تم حفظ بادئة رقم الجهاز')));
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('فشل الحفظ: $e')));
+    }
+  }
+
+  Future<void> _resetDevicePrefix() async {
+    try {
+      await DatabaseService.setDevicePrefix('GF-1');
+      _devicePrefixController.text = 'GF-1';
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم إعادة البادئة إلى GF-1')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('فشل إعادة التعيين: $e')));
+    }
   }
 
   Widget _buildSettingsSection(String title, List<Widget> children) {

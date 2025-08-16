@@ -64,7 +64,7 @@ class _DepartmentsManagementState extends State<DepartmentsManagement> {
                 final departments = [
                   {
                     'name': 'قسم الهواتف المحمولة',
-                    'manager': 'أحمد محمد',
+                    'manager': 'احمد الشريف',
                     'employees': '8',
                     'devices': '45',
                     'color': Colors.blue,

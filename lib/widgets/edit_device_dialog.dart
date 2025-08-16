@@ -18,6 +18,29 @@ class EditDeviceDialog extends StatefulWidget {
 }
 
 class _EditDeviceDialogState extends State<EditDeviceDialog> {
+  final List<String> _models = [
+    'iPhone 13',
+    'iPhone 12',
+    'Galaxy S23',
+    'Galaxy S22',
+    'Redmi Note 12',
+    'MateBook D15',
+    'MacBook Pro',
+    'MacBook Air',
+    'ThinkPad X1',
+    'Inspiron 15',
+    'Acer Aspire',
+    'Oppo Reno 8',
+    'Vivo V27',
+    'OnePlus 11',
+    'Sony Xperia 5',
+    'LG Velvet',
+    'Nokia G21',
+    'HP Pavilion',
+    'Lenovo Legion',
+    'Asus ZenBook',
+    'أخرى',
+  ];
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _clientNameController;
   late final TextEditingController _clientPhone1Controller;
@@ -54,15 +77,11 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
     'ملغي',
   ];
   final List<String> _faultTypes = [
-    'شاشة',
-    'بطارية',
-    'شحن',
-    'هاردوير',
-    'سوفت وير',
-    'مياه',
-    'صوت',
-    'شبكة',
-    'كاميرا',
+    'سوفتوير',
+    'Jetag',
+    'هاردوير ايفون',
+    'هاردوير اندرويد',
+    'باغه / شاشه',
     'أخرى',
   ];
   final List<String> _brands = [
@@ -238,7 +257,10 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
         clientName: _clientNameController.text,
         clientPhone1: _clientPhone1Controller.text,
         clientPhone2: _clientPhone2Controller.text,
-        serialNumber: _serialNumberController.text,
+        serialNumber:
+            _serialNumberController.text.trim().isEmpty
+                ? null
+                : _serialNumberController.text.trim(),
         gender: _selectedGender,
         deviceCategory: _selectedDeviceCategory,
         brand: _selectedBrand,
@@ -419,12 +441,8 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
                           prefixIcon: Icon(Icons.qr_code),
                           border: OutlineInputBorder(),
                         ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'يرجى إدخال الرقم التسلسلي للجهاز';
-                          }
-                          return null;
-                        },
+                        // serial number is optional now
+                        validator: null,
                       ),
 
                       const SizedBox(height: 24),
@@ -500,14 +518,44 @@ class _EditDeviceDialogState extends State<EditDeviceDialog> {
                       Row(
                         children: [
                           Expanded(
-                            child: TextFormField(
-                              initialValue: _selectedModel,
-                              decoration: const InputDecoration(
-                                labelText: 'الموديل',
-                                border: OutlineInputBorder(),
+                            child: Autocomplete<String>(
+                              optionsBuilder: (
+                                TextEditingValue textEditingValue,
+                              ) {
+                                if (textEditingValue.text == '') {
+                                  return const Iterable<String>.empty();
+                                }
+                                return _models.where((String option) {
+                                  return option.toLowerCase().contains(
+                                    textEditingValue.text.toLowerCase(),
+                                  );
+                                });
+                              },
+                              initialValue: TextEditingValue(
+                                text: _selectedModel,
                               ),
-                              onChanged: (value) {
-                                _selectedModel = value;
+                              fieldViewBuilder: (
+                                context,
+                                controller,
+                                focusNode,
+                                onFieldSubmitted,
+                              ) {
+                                return TextFormField(
+                                  controller: controller,
+                                  focusNode: focusNode,
+                                  decoration: const InputDecoration(
+                                    labelText: 'الموديل',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  onChanged: (value) {
+                                    _selectedModel = value;
+                                  },
+                                );
+                              },
+                              onSelected: (String selection) {
+                                setState(() {
+                                  _selectedModel = selection;
+                                });
                               },
                             ),
                           ),

@@ -27,22 +27,14 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
 
   String _selectedFaultType = '';
   bool _isLoading = false;
+  double _currentTotalPaid = 0.0;
 
   final List<String> _faultTypes = [
-    'هاردوير',
-    'سوفت وير',
-    'شاشة',
-    'بطارية',
-    'شحن',
-    'صوت',
-    'كاميرا',
-    'مكبرات صوت',
-    'مايكروفون',
-    'واي فاي',
-    'بلوتوث',
-    'بيانات',
-    'قفل/حماية',
-    'أخرى',
+    'سوفتوير',
+    'Jetag',
+    'هاردوير ايفون',
+    'هاردوير اندرويد',
+    'باغه / شاشه',
   ];
 
   @override
@@ -54,16 +46,34 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentTotalPaid();
+  }
+
+  Future<void> _loadCurrentTotalPaid() async {
+    try {
+      if (widget.existingDevice.id != null) {
+        final paid = await DatabaseService.getDeviceTotalPaid(
+          widget.existingDevice.id!,
+        );
+        if (mounted) setState(() => _currentTotalPaid = paid);
+      }
+    } catch (e) {
+      // ignore errors here but keep _currentTotalPaid = 0.0
+    }
+  }
+
   double get _calculatedRemaining {
     final newFaultCost = double.tryParse(_totalAmountController.text) ?? 0;
     final newAdvance = double.tryParse(_advanceAmountController.text) ?? 0;
-
     // التكلفة الإجمالية الجديدة = التكلفة السابقة + تكلفة العطل الجديد
     final totalNewAmount = widget.existingDevice.totalAmount + newFaultCost;
 
-    // المتبقي = التكلفة الإجمالية الجديدة - (المدفوع سابقاً من existingDevice.advanceAmount) - المقدم الجديد
-    final remaining =
-        totalNewAmount - widget.existingDevice.advanceAmount - newAdvance;
+    // المتبقي = التكلفة الإجمالية الجديدة - (الإجمالي المدفوع فعلياً) - المقدم الجديد
+    // Use _currentTotalPaid (sum of payments) rather than stored advanceAmount which may be stale
+    final remaining = totalNewAmount - _currentTotalPaid - newAdvance;
     return remaining.clamp(0.0, double.infinity);
   }
 
@@ -186,15 +196,11 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
+            // Header (match Device Details style)
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.orange[600]!, Colors.orange[800]!],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                color: Colors.white,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
@@ -202,24 +208,23 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.add_circle, color: Colors.white, size: 28),
+                  const Icon(Icons.info_outline, size: 24, color: Colors.blue),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'إضافة عطل جديد',
-                          style: TextStyle(
-                            color: Colors.white,
+                        Text(
+                          'إضافة عطل جديد - ${widget.existingDevice.deviceId}',
+                          style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         Text(
-                          'للجهاز: ${widget.existingDevice.deviceId} - ${widget.existingDevice.clientName}',
+                          widget.existingDevice.clientName,
                           style: const TextStyle(
-                            color: Colors.white70,
+                            color: Colors.grey,
                             fontSize: 14,
                           ),
                         ),
@@ -227,114 +232,72 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
+                    icon: const Icon(Icons.close),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
               ),
             ),
 
-            // معلومات مرجعية سريعة
-            Container(
-              padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue[200]!),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            // مرجع الجهاز (مطابق لنمط شاشة التفاصيل)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: _buildInfoSection('معلومات الجهاز المرجعية', [
+                _buildInfoRow('الماركة:', widget.existingDevice.brand),
+                _buildInfoRow('الموديل:', widget.existingDevice.model),
+                _buildInfoRow('النوع:', widget.existingDevice.deviceCategory),
+                _buildInfoRow(
+                  'العطل السابق:',
+                  '${widget.existingDevice.faultType} - ${widget.existingDevice.faultDescription}',
+                ),
+                const SizedBox(height: 8),
+                // financial mini-card inside section
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber[200]!),
+                  ),
+                  child: Column(
                     children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: Colors.blue[700],
-                        size: 20,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('تكلفة الأعطال السابقة:'),
+                          Text(
+                            '${widget.existingDevice.totalAmount.toStringAsFixed(2)} جنيه',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'معلومات الجهاز المرجعية',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blue[700],
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('إجمالي المدفوع سابقاً:'),
+                          Text(
+                            '${_currentTotalPaid.toStringAsFixed(2)} جنيه',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('المتبقي قبل العطل الجديد:'),
+                          Text(
+                            '${(widget.existingDevice.totalAmount - _currentTotalPaid).clamp(0.0, double.infinity).toStringAsFixed(2)} جنيه',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${widget.existingDevice.brand} ${widget.existingDevice.model}',
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          'النوع: ${widget.existingDevice.deviceCategory}',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'العطل السابق: ${widget.existingDevice.faultType} - ${widget.existingDevice.faultDescription}',
-                  ),
-                  const SizedBox(height: 8),
-                  // المعلومات المالية الحالية
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.amber[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.amber[200]!),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('تكلفة الأعطال السابقة:'),
-                            Text(
-                              '${widget.existingDevice.totalAmount.toStringAsFixed(2)} جنيه',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('إجمالي المدفوع سابقاً:'),
-                            Text(
-                              '${widget.existingDevice.advanceAmount.toStringAsFixed(2)} جنيه',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('المتبقي قبل العطل الجديد:'),
-                            Text(
-                              '${widget.existingDevice.remainingAmount.toStringAsFixed(2)} جنيه',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ]),
             ),
 
             // Form
@@ -677,4 +640,58 @@ class _AddNewFaultSimpleDialogState extends State<AddNewFaultSimpleDialog> {
       ),
     );
   }
+}
+
+Widget _buildInfoSection(String title, List<Widget> children) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.blue,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[200]!),
+        ),
+        child: Column(children: children),
+      ),
+    ],
+  );
+}
+
+Widget _buildInfoRow(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 120,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[700],
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+        ),
+      ],
+    ),
+  );
 }

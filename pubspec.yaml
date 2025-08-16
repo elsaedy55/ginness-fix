@@ -39,6 +39,7 @@ dependencies:
   
   # Database connection
   postgres: ^3.0.2
+  connectivity_plus: ^6.1.5
 
 dev_dependencies:
   flutter_test:

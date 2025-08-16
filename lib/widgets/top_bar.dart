@@ -128,7 +128,7 @@ class TopBar extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        'أحمد محمد السعدي',
+                        'أحمد الشريف',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                           color: const Color(0xFF0F172A),

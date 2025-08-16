@@ -29,20 +29,11 @@ class _AddFaultDialogState extends State<AddFaultDialog> {
   String _selectedStatus = 'في الانتظار';
 
   final List<String> _faultTypes = [
-    'هاردوير',
-    'سوفت وير',
-    'شاشة',
-    'بطارية',
-    'شحن',
-    'صوت',
-    'كاميرا',
-    'مكبرات صوت',
-    'مايكروفون',
-    'واي فاي',
-    'بلوتوث',
-    'بيانات',
-    'قفل/حماية',
-    'أخرى',
+    'سوفتوير',
+    'Jetag',
+    'هاردوير ايفون',
+    'هاردوير اندرويد',
+    'باغه / شاشه',
   ];
 
   final List<String> _statusOptions = [
@@ -74,6 +65,7 @@ class _AddFaultDialogState extends State<AddFaultDialog> {
     final advance = double.tryParse(_advanceAmountController.text) ?? 0;
     final remaining = total - advance;
 
+    if (!mounted) return;
     setState(() {
       _remainingAmountController.text = remaining.toStringAsFixed(2);
     });
@@ -119,29 +111,33 @@ class _AddFaultDialogState extends State<AddFaultDialog> {
         }
 
         // إظهار رسالة نجاح
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'تم إضافة العطل الجديد بنجاح للجهاز ${widget.existingDevice.deviceId}',
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'تم إضافة العطل الجديد بنجاح للجهاز ${widget.existingDevice.deviceId}',
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
             ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+          );
 
-        Navigator.of(context).pop();
+          Navigator.of(context).pop();
+        }
 
         // استدعاء callback لتحديث القائمة
         if (widget.onFaultAdded != null) {
           widget.onFaultAdded!();
         }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في إضافة العطل: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('خطأ في إضافة العطل: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
